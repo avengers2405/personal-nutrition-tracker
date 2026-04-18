@@ -58,3 +58,20 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Nutrition table layout */
+.nutrition-table {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.nutrition-table tbody tr {
+  height: 1fr;
+}
+
+.nutrition-table tbody tr td {
+  overflow: hidden;
+  vertical-align: middle;
+}

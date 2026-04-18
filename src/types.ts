@@ -14,9 +14,18 @@ export interface FoodItem {
   nutrients: { [nutrientId: string]: number };
 }
 
+export interface ConsumedFood {
+  foodId: string;
+  foodName: string;
+  serving: string;
+  image: string;
+  nutrients: { [nutrientId: string]: number };
+}
+
 export interface DailyStats {
   date: string;
   nutrients: { [nutrientId: string]: number };
+  foods: ConsumedFood[];
 }
 
 export interface UserConfig {
