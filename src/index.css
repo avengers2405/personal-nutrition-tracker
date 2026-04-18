@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Georgia", serif;
+  --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Theme Colors from Sophisticated Dark spec */
+  --color-primary: #B9975B; /* Accent Gold */
+  --color-on-primary: #080808;
+  --color-primary-container: #1a1a1a;
+  --color-on-primary-container: #B9975B;
+
+  --color-secondary: #888888;
+  --color-on-secondary: #E0E0E0;
+  --color-secondary-container: #222222;
+  --color-on-secondary-container: #B9975B;
+
+  --color-tertiary: #B9975B;
+  --color-on-tertiary: #080808;
+  --color-tertiary-container: #121212;
+  --color-on-tertiary-container: #B9975B;
+
+  --color-surface: #080808;
+  --color-on-surface: #E0E0E0;
+  --color-surface-variant: #121212;
+  --color-on-surface-variant: #888888;
+
+  --color-surface-container-lowest: #080808;
+  --color-surface-container-low: #0a0a0a;
+  --color-surface-container: #121212;
+  --color-surface-container-high: #1a1a1a;
+  --color-surface-container-highest: #222222;
+
+  --color-outline: #222222;
+  --color-outline-variant: #333333;
+
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-body antialiased;
+  }
+}
+
+.glass-header {
+  @apply bg-surface/90 border-b border-outline;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
