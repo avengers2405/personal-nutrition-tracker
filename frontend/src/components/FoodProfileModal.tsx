@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FoodItem } from '../types';
 
 interface FoodProfileModalProps {
@@ -34,6 +34,15 @@ export default function FoodProfileModal({
       return;
     }
 
+    // Validate all nutrients are positive integers
+    for (const [nutrientId, value] of Object.entries(nutrients)) {
+      const numValue = parseFloat(value as string);
+      if (!isNaN(numValue) && (numValue < 0 || !Number.isInteger(numValue))) {
+        alert('Please enter only positive integers for nutrient values');
+        return;
+      }
+    }
+
     const newFood: FoodItem = {
       id: `f-${Date.now()}`,
       name: foodName,
@@ -54,6 +63,28 @@ export default function FoodProfileModal({
     setNutrients({});
   };
 
+  const handleClose = () => {
+    const hasUnsavedChanges = foodName.trim() !== '' || serving.trim() !== '' || image.trim() !== '' || Object.keys(nutrients).length > 0;
+    if (hasUnsavedChanges) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+        resetForm();
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, foodName, serving, image, nutrients]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -62,7 +93,7 @@ export default function FoodProfileModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute inset-0 bg-on-surface/30 backdrop-blur-md"
           />
 
@@ -79,7 +110,7 @@ export default function FoodProfileModal({
                 Create Food Profile
               </h2>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="text-on-surface-variant hover:text-primary transition-all p-2"
               >
                 <X size={24} />
@@ -148,8 +179,7 @@ export default function FoodProfileModal({
                       </label>
                       <div className="flex gap-2 items-end">
                         <input
-                          type="number"
-                          step="0.1"
+                          type="text"
                           value={nutrients[nutrient.id] || ''}
                           onChange={(e) => handleNutrientChange(nutrient.id, e.target.value)}
                           className="flex-1 bg-surface-container-low text-on-surface font-headline text-lg rounded-none py-2 px-3 border border-outline focus:border-primary focus:ring-0 transition-all"

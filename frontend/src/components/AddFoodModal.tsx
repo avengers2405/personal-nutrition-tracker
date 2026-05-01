@@ -39,7 +39,7 @@ export default function AddFoodModal({
     const newFood: SelectedFood = {
       foodId: food.id,
       foodName: food.name,
-      amount: '1',
+      amount: '',
       units: food.serving.split('(')[0].trim(),
     };
     setSelectedFoods([...selectedFoods, newFood]);
@@ -58,8 +58,8 @@ export default function AddFoodModal({
 
   const handleCommit = () => {
     selectedFoods.forEach(food => {
-      const amount = parseFloat(food.amount) || 0;
-      if (amount > 0) {
+      const amount = parseFloat(food.amount);
+      if (!isNaN(amount) && amount > 0 && Number.isInteger(amount)) {
         onAddFood(food.foodId, amount, food.units);
       }
     });
@@ -183,8 +183,7 @@ export default function AddFoodModal({
                               Amount
                             </label>
                             <input
-                              type="number"
-                              step="0.1"
+                              type="text"
                               value={food.amount}
                               onChange={(e) => handleAmountChange(index, e.target.value)}
                               className="w-full bg-surface-container-low text-on-surface font-headline text-lg rounded-none py-2 px-3 border border-outline focus:border-primary focus:ring-0 transition-all"

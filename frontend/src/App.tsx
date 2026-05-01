@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Calendar as CalendarIcon, Search, Plus, ChevronDown, X, Check } from 'lucide-react';
 import { FoodItem, DailyStats, UserConfig, TrackedNutrient, ConsumedFood } from './types';
 import Sidebar from './components/Sidebar';
@@ -8,66 +8,20 @@ import Settings from './components/Settings';
 import AddFoodModal from './components/AddFoodModal';
 import FoodProfileModal from './components/FoodProfileModal';
 import FoodSourcePane from './components/FoodSourcePane';
+import ConnectionError from './components/ConnectionError';
+import { fetchAllMacros, fetchAllFoods, checkBackendHealth } from './services/api';
 
 const DEFAULT_CONFIG: UserConfig = {
-  trackedNutrients: [
-    { id: 'protein', name: 'Protein', goal: 120, unit: 'g' },
-    { id: 'fiber', name: 'Fiber', goal: 30, unit: 'g' },
-    { id: 'vit-c', name: 'Vitamin C', goal: 90, unit: 'mg' },
-    { id: 'vit-a', name: 'Vitamin A', goal: 900, unit: 'mcg' },
-  ]
+  trackedNutrients: []
 };
 
-const SAMPLE_FOOD_DATABASE: FoodItem[] = [
-  { 
-    id: 'f1', 
-    name: 'Navel Orange', 
-    serving: '1 medium (140g)', 
-    image: 'https://picsum.photos/seed/orange/200/200',
-    nutrients: { 'vit-c': 70, 'fiber': 3, 'vit-a': 10 }
-  },
-  { 
-    id: 'f2', 
-    name: 'Steamed Spinach', 
-    serving: '1 cup', 
-    image: 'https://picsum.photos/seed/spinach/200/200',
-    nutrients: { 'vit-a': 940, 'fiber': 4, 'vit-c': 18, 'protein': 5 }
-  },
-];
-
-const DAILY_LOGS: DailyStats[] = [
-  {
-    date: '2026-04-18',
-    nutrients: {
-      'protein': 85,
-      'fiber': 24,
-      'vit-c': 40,
-      'vit-a': 920,
-    },
-    foods: [
-      {
-        foodId: 'f1',
-        foodName: 'Navel Orange',
-        serving: '1 medium (140g)',
-        image: 'https://picsum.photos/seed/orange/200/200',
-        nutrients: { 'vit-c': 70, 'fiber': 3, 'vit-a': 10 }
-      },
-      {
-        foodId: 'f2',
-        foodName: 'Steamed Spinach',
-        serving: '1 cup',
-        image: 'https://picsum.photos/seed/spinach/200/200',
-        nutrients: { 'vit-a': 940, 'fiber': 4, 'vit-c': 18, 'protein': 5 }
-      }
-    ]
-  }
-];
+const SAMPLE_FOOD_DATABASE: FoodItem[] = [];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('main');
   const [config, setConfig] = useState<UserConfig>(DEFAULT_CONFIG);
-  const [dailyLogs, setDailyLogs] = useState<DailyStats[]>(DAILY_LOGS);
-  const [foodDatabase, setFoodDatabase] = useState<FoodItem[]>(SAMPLE_FOOD_DATABASE);
+  const [dailyLogs, setDailyLogs] = useState<DailyStats[]>([]);
+  const [foodDatabase, setFoodDatabase] = useState<FoodItem[]>([]);
   const [currentDate, setCurrentDate] = useState('2026-04-18');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFoodProfileModalOpen, setIsFoodProfileModalOpen] = useState(false);
@@ -76,13 +30,155 @@ export default function App() {
   const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
   const [selectedFoodsForEntry, setSelectedFoodsForEntry] = useState<{ foodId: string; foodName: string; amount: string; units: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const retryIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch macros and foods from backend on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        console.log('[App] Starting data load from backend...');
+        
+        // Check backend health first
+        console.log('[App] Checking backend health...');
+        await checkBackendHealth();
+        console.log('[App] Backend health check passed');
+        
+        // Fetch all macros
+        console.log('[App] Fetching macros...');
+        const macrosResponse = await fetchAllMacros();
+        console.log('[App] Macros fetched:', macrosResponse);
+        const macros = macrosResponse.data || [];
+        
+        // Convert macros to UserConfig format with defaults for missing values
+        const trackedNutrients = macros.map((macro: any) => ({
+          id: macro.id.toString(),
+          name: macro.name,
+          goal: macro.target ?? 0, // Use target from DB, default to 0
+          unit: macro.measurement_unit ?? 'g', // Use measurement_unit from DB, default to 'g'
+          visible: macro.home_display ?? true // Use home_display from DB, default to true
+        }));
+        
+        setConfig({ trackedNutrients });
+        
+        // Fetch all foods
+        console.log('[App] Fetching foods...');
+        const foodsResponse = await fetchAllFoods();
+        console.log('[App] Foods fetched:', foodsResponse);
+        const foods = foodsResponse.data || [];
+        
+        // Convert foods to FoodItem format
+        const foodItems: FoodItem[] = foods.map((food: any) => ({
+          id: food.id.toString(),
+          name: food.name,
+          serving: `1 ${food.measurement_unit}`,
+          image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
+          nutrients: {} // Nutrients will be fetched separately if needed
+        }));
+        
+        setFoodDatabase(foodItems);
+        setIsLoading(false);
+        setConnectionError(false);
+        setIsRetrying(false);
+        setRetryCount(0);
+        
+        console.log('[App] Data load completed successfully');
+        
+        // Clear any existing retry intervals
+        if (retryIntervalRef.current) {
+          clearInterval(retryIntervalRef.current);
+          retryIntervalRef.current = null;
+        }
+      } catch (error) {
+        console.error('[App] Error loading data from backend:', error);
+        if (error instanceof Error) {
+          console.error('[App] Error message:', error.message);
+          console.error('[App] Error stack:', error.stack);
+        }
+        setIsLoading(false);
+        setConnectionError(true);
+        setIsRetrying(true);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Auto-retry every 5 seconds when connection fails
+  useEffect(() => {
+    if (connectionError && isRetrying) {
+      retryIntervalRef.current = setInterval(() => {
+        setRetryCount(prev => prev + 1);
+        const attemptReconnect = async () => {
+          try {
+            // Fetch all macros
+            const macrosResponse = await fetchAllMacros();
+            const macros = macrosResponse.data || [];
+            
+            // Convert macros to UserConfig format with default settings
+            const trackedNutrients = macros.map((macro: any) => ({
+              id: macro.id.toString(),
+              name: macro.name,
+              goal: 0,
+              unit: 'g',
+              visible: true
+            }));
+            
+            setConfig({ trackedNutrients });
+            
+            // Fetch all foods
+            const foodsResponse = await fetchAllFoods();
+            const foods = foodsResponse.data || [];
+            
+            // Convert foods to FoodItem format
+            const foodItems: FoodItem[] = foods.map((food: any) => ({
+              id: food.id.toString(),
+              name: food.name,
+              serving: `1 ${food.measurement_unit}`,
+              image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
+              nutrients: {}
+            }));
+            
+            setFoodDatabase(foodItems);
+            setConnectionError(false);
+            setIsRetrying(false);
+            setRetryCount(0);
+            
+            // Clear the retry interval
+            if (retryIntervalRef.current) {
+              clearInterval(retryIntervalRef.current);
+              retryIntervalRef.current = null;
+            }
+          } catch (error) {
+            console.error('Retry attempt failed:', error);
+            // Continue retrying
+          }
+        };
+        
+        attemptReconnect();
+      }, 5000); // Retry every 5 seconds
+    }
+
+    // Cleanup on unmount or when connection error changes
+    return () => {
+      if (retryIntervalRef.current) {
+        clearInterval(retryIntervalRef.current);
+      }
+    };
+  }, [connectionError, isRetrying]);
 
   const stats = dailyLogs.find(log => log.date === currentDate) || { date: currentDate, nutrients: {}, foods: [] };
   
-  const trackedNutrients: TrackedNutrient[] = config.trackedNutrients.map(n => ({
-    ...n,
-    value: stats.nutrients[n.id] || 0
-  }));
+  const trackedNutrients: TrackedNutrient[] = config.trackedNutrients
+    .filter(n => n.visible !== false)
+    .map(n => ({
+      ...n,
+      value: stats.nutrients[n.id] || 0
+    }));
 
   const handleAddFood = (foodId: string, amount: number, units: string) => {
     const food = foodDatabase.find(f => f.id === foodId);
@@ -130,6 +226,65 @@ export default function App() {
     setFoodDatabase([...foodDatabase, newFood]);
   };
 
+  const handleRetry = () => {
+    setConnectionError(false);
+    setIsRetrying(false);
+    setRetryCount(0);
+    
+    // Clear any existing retry intervals
+    if (retryIntervalRef.current) {
+      clearInterval(retryIntervalRef.current);
+      retryIntervalRef.current = null;
+    }
+
+    // Trigger initial load again
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        // Fetch all macros
+        const macrosResponse = await fetchAllMacros();
+        const macros = macrosResponse.data || [];
+        
+        // Convert macros to UserConfig format with default settings
+        const trackedNutrients = macros.map((macro: any) => ({
+          id: macro.id.toString(),
+          name: macro.name,
+          goal: 0,
+          unit: 'g',
+          visible: true
+        }));
+        
+        setConfig({ trackedNutrients });
+        
+        // Fetch all foods
+        const foodsResponse = await fetchAllFoods();
+        const foods = foodsResponse.data || [];
+        
+        // Convert foods to FoodItem format
+        const foodItems: FoodItem[] = foods.map((food: any) => ({
+          id: food.id.toString(),
+          name: food.name,
+          serving: `1 ${food.measurement_unit}`,
+          image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
+          nutrients: {}
+        }));
+        
+        setFoodDatabase(foodItems);
+        setIsLoading(false);
+        setConnectionError(false);
+        setIsRetrying(false);
+        setRetryCount(0);
+      } catch (error) {
+        console.error('Manual retry failed:', error);
+        setIsLoading(false);
+        setConnectionError(true);
+        setIsRetrying(true);
+      }
+    };
+
+    loadData();
+  };
+
   const matchingFoods = foodSearchQuery.trim() ? 
     foodDatabase.filter(food => food.name.toLowerCase().includes(foodSearchQuery.toLowerCase())) :
     [];
@@ -167,10 +322,35 @@ export default function App() {
   };
 
   return (
-    <div className="flex min-h-screen bg-surface selection:bg-primary/20 selection:text-primary">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+    <>
+      {/* Connection Error Screen */}
+      {connectionError && !isLoading && (
+        <ConnectionError 
+          onRetry={handleRetry}
+          isRetrying={isRetrying}
+          retryCount={retryCount}
+        />
+      )}
       
-      <main className="flex-1 lg:ml-64 flex flex-col h-screen overflow-hidden relative transition-all duration-500">
+      {/* Main App */}
+      {!connectionError && (
+        <div className="flex min-h-screen bg-surface selection:bg-primary/20 selection:text-primary">
+          <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+          
+          <main className="flex-1 lg:ml-64 flex flex-col h-screen overflow-hidden relative transition-all duration-500">
+            
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-on-surface-variant font-body uppercase tracking-[1px]">Loading data from backend...</p>
+                </div>
+              </div>
+        )}
+        
+        {!isLoading && (
+          <>
         
         {/* Responsive Header */}
         <header className="fixed top-0 left-0 lg:left-[240px] right-0 z-30 px-8 py-6 glass-header flex justify-between items-center transition-all duration-300">
@@ -374,6 +554,8 @@ export default function App() {
             
           </div>
         </div>
+          </>
+        )}
       </main>
 
       <BottomNav 
@@ -412,6 +594,9 @@ export default function App() {
           foods={stats.foods || []}
         />
       )}
-    </div>
+        </div>
+      )}
+    </>
   );
+  // );
 }

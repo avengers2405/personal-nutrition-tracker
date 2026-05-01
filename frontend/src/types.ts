@@ -29,5 +29,5 @@ export interface DailyStats {
 }
 
 export interface UserConfig {
-  trackedNutrients: { id: string; name: string; goal: number; unit: string }[];
+  trackedNutrients: { id: string; name: string; goal: number; unit: string; visible?: boolean }[];
 }
