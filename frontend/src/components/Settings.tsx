@@ -206,7 +206,7 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
                     type="text" 
                     placeholder="Enter value"
                     value={n.goal} 
-                    onChange={e => updateNutrient(n.id, { goal: e.target.value })}
+                    onChange={e => updateNutrient(n.id, { goal: e.target.value as any })}
                   />
                   <div className="flex gap-1">
                     <select 
@@ -302,7 +302,7 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
                     onChange={e => {
                       setFoodDatabase(foodDatabase.map(f => f.id === food.id ? { 
                         ...f, 
-                        nutrients: { ...f.nutrients, [n.id]: e.target.value } 
+                        nutrients: { ...f.nutrients, [n.id]: e.target.value as any } 
                       } : f));
                     }}
                   />

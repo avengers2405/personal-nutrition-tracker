@@ -36,8 +36,8 @@ export default function FoodProfileModal({
 
     // Validate all nutrients are positive integers
     for (const [nutrientId, value] of Object.entries(nutrients)) {
-      const numValue = parseFloat(value as string);
-      if (!isNaN(numValue) && (numValue < 0 || !Number.isInteger(numValue))) {
+      const numValue = Number(value);
+      if (isNaN(numValue) || numValue < 0 || !Number.isInteger(numValue)) {
         alert('Please enter only positive integers for nutrient values');
         return;
       }
