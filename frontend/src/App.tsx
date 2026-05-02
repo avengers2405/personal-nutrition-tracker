@@ -9,7 +9,7 @@ import AddFoodModal from './components/AddFoodModal';
 import FoodProfileModal from './components/FoodProfileModal';
 import FoodSourcePane from './components/FoodSourcePane';
 import ConnectionError from './components/ConnectionError';
-import { fetchAllMacros, fetchAllFoods, checkBackendHealth } from './services/api';
+import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood } from './services/api';
 
 const DEFAULT_CONFIG: UserConfig = {
   trackedNutrients: []
@@ -22,6 +22,7 @@ export default function App() {
   const [config, setConfig] = useState<UserConfig>(DEFAULT_CONFIG);
   const [dailyLogs, setDailyLogs] = useState<DailyStats[]>([]);
   const [foodDatabase, setFoodDatabase] = useState<FoodItem[]>([]);
+  const [measurementUnits, setMeasurementUnits] = useState<string[]>([]);
   const [currentDate, setCurrentDate] = useState('2026-04-18');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFoodProfileModalOpen, setIsFoodProfileModalOpen] = useState(false);
@@ -71,11 +72,21 @@ export default function App() {
         console.log('[App] Foods fetched:', foodsResponse);
         const foods = foodsResponse.data || [];
         
+        // Fetch measurement units
+        console.log('[App] Fetching measurement units...');
+        try {
+          const units = await fetchMeasurementUnits();
+          setMeasurementUnits(units);
+        } catch (error) {
+          console.error('[App] Failed to fetch measurement units:', error);
+          setMeasurementUnits(['g']);
+        }
+        
         // Convert foods to FoodItem format
         const foodItems: FoodItem[] = foods.map((food: any) => ({
           id: food.id.toString(),
           name: food.name,
-          serving: `1 ${food.measurement_unit}`,
+          serving: `${food.serving_size || 1} ${food.measurement_unit}`,
           image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
           nutrients: {} // Nutrients will be fetched separately if needed
         }));
@@ -138,7 +149,7 @@ export default function App() {
             const foodItems: FoodItem[] = foods.map((food: any) => ({
               id: food.id.toString(),
               name: food.name,
-              serving: `1 ${food.measurement_unit}`,
+              serving: `${food.serving_size || 1} ${food.measurement_unit}`,
               image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
               nutrients: {}
             }));
@@ -222,8 +233,32 @@ export default function App() {
     });
   };
 
-  const handleCreateFoodProfile = (newFood: FoodItem) => {
-    setFoodDatabase([...foodDatabase, newFood]);
+  const handleCreateFoodProfile = async (newFood: FoodItem) => {
+    try {
+      // First update the UI optimistically
+      setFoodDatabase([...foodDatabase, newFood]);
+      
+      // serving comes formatted as `${servingAmount} ${measurementUnit}` from the modal
+      // We need to parse it back
+      const parts = newFood.serving.split(' ');
+      const servingAmountStr = parts[0];
+      const measurementUnitStr = parts.slice(1).join(' ');
+      
+      const servingAmount = parseFloat(servingAmountStr);
+      
+      await createFood(
+        newFood.name,
+        measurementUnitStr || 'g',
+        isNaN(servingAmount) ? 100 : servingAmount,
+        newFood.nutrients
+      );
+      
+      // Optionally we could refetch foods here to get actual IDs,
+      // but UI is already updated so it's fine.
+    } catch (error) {
+      console.error('Error creating food profile:', error);
+      alert('Failed to save to database. Only temporarily saved.');
+    }
   };
 
   const handleRetry = () => {
@@ -264,7 +299,7 @@ export default function App() {
         const foodItems: FoodItem[] = foods.map((food: any) => ({
           id: food.id.toString(),
           name: food.name,
-          serving: `1 ${food.measurement_unit}`,
+          serving: `${food.serving_size || 1} ${food.measurement_unit}`,
           image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
           nutrients: {}
         }));
@@ -420,8 +455,8 @@ export default function App() {
         </header>
 
         {/* Dynamic Content */}
-        <div className="flex-1 flex flex-col mt-28 px-8 overflow-hidden">
-          <div className="max-w-6xl mx-auto w-full h-full flex flex-col flex-1 min-h-0 gap-6 pb-10 lg:pb-6">
+        <div className={`flex-1 flex flex-col mt-28 px-8 ${activeTab === 'settings' ? 'overflow-y-auto no-scrollbar' : 'overflow-hidden'}`}>
+          <div className={`max-w-6xl mx-auto w-full ${activeTab === 'settings' ? '' : 'h-full flex flex-col flex-1 min-h-0'} gap-6 pb-10 lg:pb-6`}>
             
             {activeTab === 'main' ? (
               <>
@@ -497,8 +532,7 @@ export default function App() {
                                   className="flex-1 bg-surface-container-low text-on-surface font-headline text-sm rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
                                   placeholder="0"
                                 />
-                                <input
-                                  type="text"
+                                <select
                                   value={food.units}
                                   onChange={(e) => {
                                     const updated = [...selectedFoodsForEntry];
@@ -506,8 +540,16 @@ export default function App() {
                                     setSelectedFoodsForEntry(updated);
                                   }}
                                   className="w-20 bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                                  placeholder="units"
-                                />
+                                >
+                                  {measurementUnits.map((u) => (
+                                    <option key={u} value={u}>
+                                      {u}
+                                    </option>
+                                  ))}
+                                  {measurementUnits.length === 0 && (
+                                    <option value={food.units}>{food.units || 'g'}</option>
+                                  )}
+                                </select>
                               </div>
                             </div>
                             <button
@@ -573,6 +615,7 @@ export default function App() {
           setIsFoodProfileModalOpen(true);
         }}
         onAddFood={handleAddFood}
+        measurementUnits={measurementUnits}
       />
 
       <FoodProfileModal
@@ -580,6 +623,7 @@ export default function App() {
         onClose={() => setIsFoodProfileModalOpen(false)}
         onCreateFood={handleCreateFoodProfile}
         trackedNutrients={config.trackedNutrients}
+        measurementUnits={measurementUnits}
       />
 
       {selectedMacroId && (

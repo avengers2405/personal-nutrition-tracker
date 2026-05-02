@@ -9,6 +9,7 @@ interface AddFoodModalProps {
   foodDatabase: FoodItem[];
   onCreateProfile: () => void;
   onAddFood: (foodId: string, amount: number, units: string) => void;
+  measurementUnits?: string[];
 }
 
 interface SelectedFood {
@@ -24,6 +25,7 @@ export default function AddFoodModal({
   foodDatabase,
   onCreateProfile,
   onAddFood,
+  measurementUnits = [],
 }: AddFoodModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFoods, setSelectedFoods] = useState<SelectedFood[]>([]);
@@ -194,8 +196,7 @@ export default function AddFoodModal({
                             <label className="block text-[9px] font-black uppercase tracking-[1px] text-on-surface-variant mb-2">
                               Units
                             </label>
-                            <input
-                              type="text"
+                            <select
                               value={food.units}
                               onChange={(e) => {
                                 const updated = [...selectedFoods];
@@ -203,8 +204,16 @@ export default function AddFoodModal({
                                 setSelectedFoods(updated);
                               }}
                               className="w-full bg-surface-container-low text-on-surface font-body text-sm rounded-none py-2 px-3 border border-outline focus:border-primary focus:ring-0 transition-all"
-                              placeholder="units"
-                            />
+                            >
+                              {measurementUnits.map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                              {measurementUnits.length === 0 && (
+                                <option value={food.units}>{food.units || 'g'}</option>
+                              )}
+                            </select>
                           </div>
                         </div>
                       </motion.div>

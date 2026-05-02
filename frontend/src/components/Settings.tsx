@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FoodItem, UserConfig } from '../types';
 import { Plus, Trash2, Edit2, Save, X, Eye, EyeOff } from 'lucide-react';
-import { fetchMeasurementUnits, createMacro, updateMacro, deleteMacro } from '../services/api';
+import { fetchMeasurementUnits, createMacro, updateMacro, deleteMacro, createFood, updateFood, deleteFood } from '../services/api';
 import FoodProfileModal from './FoodProfileModal';
 import AddNutrientModal from './AddNutrientModal';
 
@@ -159,11 +159,17 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
     setIsFoodModalOpen(true);
   };
 
-  const removeFood = (id: string) => {
-    setFoodDatabase(foodDatabase.filter(f => f.id !== id));
+  const removeFood = async (id: string) => {
+    try {
+      await deleteFood(id);
+      setFoodDatabase(foodDatabase.filter(f => f.id !== id));
+    } catch (error) {
+      console.error('Error deleting food:', error);
+      alert('Failed to delete food');
+    }
   };
 
-  const saveFoodNutrients = (food: FoodItem) => {
+  const saveFoodNutrients = async (food: FoodItem) => {
     // Validate all nutrients are positive integers
     for (const [nutrientId, value] of Object.entries(food.nutrients)) {
       const numValue = Number(value);
@@ -172,8 +178,18 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
         return false;
       }
     }
-    setEditingFood(null);
-    return true;
+    try {
+      // Just sending nutrients updates for now along with base details essentially
+      await updateFood(food.id, {
+        nutrients: food.nutrients
+      });
+      setEditingFood(null);
+      return true;
+    } catch (error) {
+      console.error('Error updating food:', error);
+      alert('Failed to update food');
+      return false;
+    }
   };
 
   return (
@@ -319,8 +335,27 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
         isOpen={isFoodModalOpen}
         onClose={() => setIsFoodModalOpen(false)}
         trackedNutrients={config.trackedNutrients}
-        onCreateFood={(food) => {
-          setFoodDatabase([...foodDatabase, food]);
+        measurementUnits={measurementUnits}
+        onCreateFood={async (food) => {
+          try {
+            setFoodDatabase([...foodDatabase, food]);
+            
+            const parts = food.serving.split(' ');
+            const servingAmountStr = parts[0];
+            const measurementUnitStr = parts.slice(1).join(' ');
+            
+            const servingAmount = parseFloat(servingAmountStr);
+            
+            await createFood(
+              food.name,
+              measurementUnitStr || 'g',
+              isNaN(servingAmount) ? 100 : servingAmount,
+              food.nutrients
+            );
+          } catch (error) {
+            console.error('Error creating food:', error);
+            alert('Failed to save food to database. Currently only temporarily saved.');
+          }
         }}
       />
 

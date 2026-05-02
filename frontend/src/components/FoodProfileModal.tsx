@@ -8,6 +8,7 @@ interface FoodProfileModalProps {
   onClose: () => void;
   onCreateFood: (food: FoodItem) => void;
   trackedNutrients: { id: string; name: string; goal: number; unit: string }[];
+  measurementUnits?: string[];
 }
 
 export default function FoodProfileModal({
@@ -15,9 +16,11 @@ export default function FoodProfileModal({
   onClose,
   onCreateFood,
   trackedNutrients,
+  measurementUnits = [],
 }: FoodProfileModalProps) {
   const [foodName, setFoodName] = useState('');
   const [serving, setServing] = useState('');
+  const [measurementUnit, setMeasurementUnit] = useState(measurementUnits[0] || 'g');
   const [image, setImage] = useState('');
   const [nutrients, setNutrients] = useState<{ [id: string]: number }>({});
 
@@ -46,7 +49,7 @@ export default function FoodProfileModal({
     const newFood: FoodItem = {
       id: `f-${Date.now()}`,
       name: foodName,
-      serving,
+      serving: measurementUnit ? `${serving} ${measurementUnit}` : `${serving} ${measurementUnits[0] || 'g'}`,
       image: image || 'https://picsum.photos/seed/food/200/200',
       nutrients,
     };
@@ -59,12 +62,13 @@ export default function FoodProfileModal({
   const resetForm = () => {
     setFoodName('');
     setServing('');
+    setMeasurementUnit(measurementUnits[0] || 'g');
     setImage('');
     setNutrients({});
   };
 
   const handleClose = () => {
-    const hasUnsavedChanges = foodName.trim() !== '' || serving.trim() !== '' || image.trim() !== '' || Object.keys(nutrients).length > 0;
+    const hasUnsavedChanges = foodName.trim() !== '' || serving.trim() !== '' || (measurementUnit !== (measurementUnits[0] || 'g')) || image.trim() !== '' || Object.keys(nutrients).length > 0;
     if (hasUnsavedChanges) {
       if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
         resetForm();
@@ -83,7 +87,7 @@ export default function FoodProfileModal({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, foodName, serving, image, nutrients]);
+  }, [isOpen, foodName, serving, measurementUnit, image, nutrients]);
 
   return (
     <AnimatePresence>
@@ -142,9 +146,30 @@ export default function FoodProfileModal({
                   value={serving}
                   onChange={(e) => setServing(e.target.value)}
                   className="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant/40 rounded-none py-4 px-4 border border-outline focus:border-primary focus:ring-0 transition-all font-body text-sm"
-                  placeholder="e.g., 100g, 1 cup, 1 medium, etc."
+                  placeholder="e.g., 100, 1, etc."
                   type="text"
                 />
+              </div>
+
+              {/* Measurement Unit */}
+              <div className="mb-6">
+                <label className="block text-[10px] font-black uppercase tracking-[2px] text-on-surface-variant mb-3">
+                  Measurement Unit
+                </label>
+                <select
+                  value={measurementUnit}
+                  onChange={(e) => setMeasurementUnit(e.target.value)}
+                  className="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant/40 rounded-none py-4 px-4 border border-outline focus:border-primary focus:ring-0 transition-all font-body text-sm"
+                >
+                  {measurementUnits.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                  {measurementUnits.length === 0 && (
+                    <option value="g">g</option>
+                  )}
+                </select>
               </div>
 
               {/* Image URL */}

@@ -146,16 +146,16 @@ app.delete('/api/food-entries/:entryId', async (req, res) => {
 /**
  * Create a new food-macro relationship
  * POST /api/food-macros
- * Body: { foodId, macroId, servingSize, value }
+ * Body: { foodId, macroId, value }
  */
 app.post('/api/food-macros', async (req, res) => {
-    const { foodId, macroId, servingSize, value } = req.body;
+    const { foodId, macroId, value } = req.body;
 
-    if (!foodId || !macroId || servingSize === undefined || value === undefined) {
-        return res.status(400).json({ error: 'Missing required fields: foodId, macroId, servingSize, value' });
+    if (!foodId || !macroId || value === undefined) {
+        return res.status(400).json({ error: 'Missing required fields: foodId, macroId, value' });
     }
 
-    const { data, error } = await insertFoodMacro(foodId, macroId, servingSize, value);
+    const { data, error } = await insertFoodMacro(foodId, macroId, value);
     if (error) {
         return res.status(500).json({ error });
     }
@@ -165,7 +165,7 @@ app.post('/api/food-macros', async (req, res) => {
 /**
  * Update a food-macro relationship
  * PUT /api/food-macros/:foodMacroId
- * Body: { servingSize?, value? }
+ * Body: { value? }
  */
 app.put('/api/food-macros/:foodMacroId', async (req, res) => {
     const { foodMacroId } = req.params;
@@ -205,28 +205,41 @@ app.delete('/api/food-macros/:foodMacroId', async (req, res) => {
 // ============================================================================
 
 /**
- * Create a new food
+ * Create a new food and its associated macros
  * POST /api/foods
- * Body: { name, measurementUnit }
+ * Body: { name, measurementUnit, servingSize?, nutrients? }
  */
 app.post('/api/foods', async (req, res) => {
-    const { name, measurementUnit } = req.body;
+    const { name, measurementUnit, servingSize, nutrients } = req.body;
 
     if (!name || !measurementUnit) {
         return res.status(400).json({ error: 'Missing required fields: name, measurementUnit' });
     }
 
-    const { data, error } = await insertFood(name, measurementUnit);
-    if (error) {
-        return res.status(500).json({ error });
+    const { data: foodData, error: foodError } = await insertFood(name, measurementUnit, servingSize);
+    if (foodError || !foodData || foodData.length === 0) {
+        console.error('[API] POST /api/foods error:', foodError || 'Missing data returned');
+        return res.status(500).json({ error: foodError || 'Failed to create food' });
     }
-    res.status(201).json({ data });
+
+    const newFood = foodData[0];
+
+    // If nutrients and serving size are provided, create food-macro relationships
+    if (nutrients && servingSize !== undefined) {
+        const macroPromises = Object.entries(nutrients).map(([macroId, value]) => {
+            return insertFoodMacro(newFood.id, parseInt(macroId), value);
+        });
+
+        await Promise.all(macroPromises);
+    }
+
+    res.status(201).json({ data: newFood });
 });
 
 /**
  * Update a food
  * PUT /api/foods/:foodId
- * Body: { name?, measurementUnit? }
+ * Body: { name?, measurementUnit?, servingSize?, nutrients? }
  */
 app.put('/api/foods/:foodId', async (req, res) => {
     const { foodId } = req.params;
@@ -236,11 +249,36 @@ app.put('/api/foods/:foodId', async (req, res) => {
         return res.status(400).json({ error: 'Missing foodId parameter' });
     }
 
-    const { data, error } = await updateFood(foodId, updates);
-    if (error) {
-        return res.status(500).json({ error });
+    // Try to update basic food properties if any are provided
+    if (updates.name || updates.measurementUnit || updates.servingSize) {
+        const { data, error } = await updateFood(foodId, updates);
+        if (error) {
+            return res.status(500).json({ error });
+        }
     }
-    res.status(200).json({ data });
+
+    // If nutrients are provided, sync food-macros
+    if (updates.nutrients) {
+        // First delete existing macros for this food
+        const { error: deleteError } = await supabase
+            .from('food-macro')
+            .delete()
+            .eq('food_id', foodId);
+        
+        if (deleteError) {
+             return res.status(500).json({ error: deleteError });
+        }
+
+        // Insert new macros
+        const macroPromises = Object.entries(updates.nutrients).map(([macroId, value]) => {
+            // Need a way to reuse insertFoodMacro or just do it inline
+            return insertFoodMacro(parseInt(foodId), parseInt(macroId), value);
+        });
+
+        await Promise.all(macroPromises);
+    }
+
+    res.status(200).json({ data: { id: foodId, ...updates } });
 });
 
 /**
@@ -253,6 +291,12 @@ app.delete('/api/foods/:foodId', async (req, res) => {
     if (!foodId) {
         return res.status(400).json({ error: 'Missing foodId parameter' });
     }
+
+    // First delete associated macros to avoid foreign key constraints
+    await supabase
+        .from('food-macro')
+        .delete()
+        .eq('food_id', foodId);
 
     const { data, error } = await deleteFood(foodId);
     if (error) {

@@ -40,21 +40,21 @@ export async function insertFoodEntry(foodId, servings, eatenOnDate) {
  * @throws {Error} If food-macro data is not found or amount is invalid
  */
 export async function insertFoodEntryByAmount(foodId, amount, eatenOnDate) {
-    // Fetch the food_macro record to get the serving size
-    const { data: foodMacroData, error: foodMacroError } = await supabase
-        .from('FoodMacro')
+    // Fetch the food record to get the baseline serving size
+    const { data: foodData, error: foodError } = await supabase
+        .from('Foods')
         .select('serving_size')
-        .eq('food_id', foodId)
+        .eq('id', foodId)
         .single();
 
-    if (foodMacroError || !foodMacroData) {
+    if (foodError || !foodData) {
         return {
             data: null,
-            error: foodMacroError || new Error(`No macro data found for food ID: ${foodId}`)
+            error: foodError || new Error(`No food data found for food ID: ${foodId}`)
         };
     }
 
-    const servingSize = foodMacroData.serving_size;
+    const servingSize = foodData.serving_size;
 
     if (servingSize <= 0) {
         return {
@@ -105,20 +105,18 @@ export async function deleteFoodEntry(entryId) {
 // ============================================================================
 
 /**
- * Insert a new food macro record (relationship between food and macro with serving details)
+ * Insert a new food macro record (relationship between food and macro)
  * @param {number} foodId - The ID of the food
  * @param {number} macroId - The ID of the macro (nutrient)
- * @param {number} servingSize - The serving size for this macro
- * @param {number} value - The value of the macro per serving
+ * @param {number} value - The value of the macro per serving amount of the food
  * @returns {Promise<{data: Object|null, error: Object|null}>} The inserted record or error
  */
-export async function insertFoodMacro(foodId, macroId, servingSize, value) {
+export async function insertFoodMacro(foodId, macroId, value) {
     return supabase
-        .from('FoodMacro')
+        .from('food-macro')
         .insert({
             food_id: foodId,
             macro_id: macroId,
-            serving_size: servingSize,
             value,
             created_at: new Date().toISOString()
         });
@@ -127,16 +125,15 @@ export async function insertFoodMacro(foodId, macroId, servingSize, value) {
 /**
  * Update an existing food macro record
  * @param {number} foodMacroId - The ID of the food macro record to update
- * @param {Object} updates - Object containing fields to update (servingSize, value)
+ * @param {Object} updates - Object containing fields to update (value)
  * @returns {Promise<{data: Object|null, error: Object|null}>} The updated record or error
  */
 export async function updateFoodMacro(foodMacroId, updates) {
     const updateData = {};
-    if (updates.servingSize !== undefined) updateData.serving_size = updates.servingSize;
     if (updates.value !== undefined) updateData.value = updates.value;
 
     return supabase
-        .from('FoodMacro')
+        .from('food-macro')
         .update(updateData)
         .eq('id', foodMacroId);
 }
@@ -148,7 +145,7 @@ export async function updateFoodMacro(foodMacroId, updates) {
  */
 export async function deleteFoodMacro(foodMacroId) {
     return supabase
-        .from('FoodMacro')
+        .from('food-macro')
         .delete()
         .eq('id', foodMacroId);
 }
@@ -161,28 +158,32 @@ export async function deleteFoodMacro(foodMacroId) {
  * Insert a new food record
  * @param {string} name - The name of the food
  * @param {string} measurementUnit - The measurement unit (e.g., grams, ml, pieces)
+ * @param {number} servingSize - The default serving size of the food in its measurement unit
  * @returns {Promise<{data: Object|null, error: Object|null}>} The inserted record or error
  */
-export async function insertFood(name, measurementUnit) {
+export async function insertFood(name, measurementUnit, servingSize) {
     return supabase
         .from('Foods')
         .insert({
             name,
             measurement_unit: measurementUnit,
+            serving_size: servingSize,
             created_at: new Date().toISOString()
-        });
+        })
+        .select();
 }
 
 /**
  * Update an existing food record
  * @param {number} foodId - The ID of the food to update
- * @param {Object} updates - Object containing fields to update (name, measurementUnit)
+ * @param {Object} updates - Object containing fields to update (name, measurementUnit, servingSize)
  * @returns {Promise<{data: Object|null, error: Object|null}>} The updated record or error
  */
 export async function updateFood(foodId, updates) {
     const updateData = {};
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.measurementUnit !== undefined) updateData.measurement_unit = updates.measurementUnit;
+    if (updates.servingSize !== undefined) updateData.serving_size = updates.servingSize;
 
     return supabase
         .from('Foods')
@@ -322,12 +323,11 @@ export async function getFoodById(foodId) {
         .from('Foods')
         .select(`
             *,
-            food_macro(
+            "food-macro"(
                 id,
                 macro_id,
-                serving_size,
                 value,
-                macros(name)
+                Macros(name)
             )
         `)
         .eq('id', foodId)
@@ -340,7 +340,7 @@ export async function getFoodById(foodId) {
  */
 export async function getAllFoodMacros() {
     return supabase
-        .from('FoodMacro')
+        .from('food-macro')
         .select('*');
 }
 
@@ -351,10 +351,10 @@ export async function getAllFoodMacros() {
  */
 export async function getFoodMacrosByFoodId(foodId) {
     return supabase
-        .from('FoodMacro')
+        .from('food-macro')
         .select(`
             *,
-            macros(name)
+            Macros(name)
         `)
         .eq('food_id', foodId);
 }

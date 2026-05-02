@@ -185,6 +185,29 @@ export async function fetchFoodById(foodId: number) {
     }
 }
 
+/**
+ * Create a new food
+ */
+export async function createFood(name: string, measurementUnit: string, servingSize?: number, nutrients?: { [macroId: string]: number }) {
+    try {
+        console.log('[API Service] Creating food:', { name, measurementUnit, servingSize, nutrients });
+        const response = await fetch(`${BACKEND_URL}/api/foods`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, measurementUnit, servingSize, nutrients })
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to create food: ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log('[API Service] Food created:', result);
+        return result;
+    } catch (error) {
+        console.error('Error creating food:', error);
+        throw error;
+    }
+}
+
 // ============================================================================
 // FOOD MACRO API
 // ============================================================================
@@ -317,14 +340,47 @@ export async function fetchMeasurementUnits(): Promise<string[]> {
             throw new Error(`Failed to fetch measurement units: ${response.statusText}`);
         }
         const result = await response.json();
-        console.log('[API Service] Measurement units fetched:', result.data);
-        // Handle both array response and { data: [...] } response
         return Array.isArray(result.data) ? result.data : (Array.isArray(result) ? result : []);
     } catch (error) {
         console.error('[API Service] Error fetching measurement units:', error);
-        if (error instanceof TypeError) {
-            console.error('[API Service] Network error - check if backend is running and CORS is enabled');
+        throw error;
+    }
+}
+
+/**
+ * Update an existing food
+ */
+export async function updateFood(foodId: number | string, updates: { name?: string, measurementUnit?: string, servingSize?: number, nutrients?: Record<string, number> }) {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/foods/${foodId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to update food: ${response.statusText}`);
         }
+        return await response.json();
+    } catch (error) {
+        console.error(`Error updating food ${foodId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Delete a food
+ */
+export async function deleteFood(foodId: number | string) {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/foods/${foodId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to delete food: ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`Error deleting food ${foodId}:`, error);
         throw error;
     }
 }
