@@ -22,7 +22,7 @@ console.log('[DB] Supabase client initialized');
  */
 export async function insertFoodEntry(foodId, servings, eatenOnDate) {
     return supabase
-        .from('FoodEntry')
+        .from('food-entry')
         .insert({
             food_id: foodId,
             servings,
@@ -83,7 +83,7 @@ export async function updateFoodEntry(entryId, updates) {
     if (updates.eatenOnDate !== undefined) updateData.eaten_on_date = updates.eatenOnDate;
 
     return supabase
-        .from('FoodEntry')
+        .from('food-entry')
         .update(updateData)
         .eq('id', entryId);
 }
@@ -95,9 +95,34 @@ export async function updateFoodEntry(entryId, updates) {
  */
 export async function deleteFoodEntry(entryId) {
     return supabase
-        .from('FoodEntry')
+        .from('food-entry')
         .delete()
         .eq('id', entryId);
+}
+
+/**
+ * Get all food entries for a specific date with basic food details
+ * @param {string} date - The date in YYYY-MM-DD format
+ * @returns {Promise<{data: Array|null, error: Object|null}>} Array of food entries with details or error
+ */
+export async function getFoodEntriesByDate(date) {
+    return supabase
+        .from('food-entry')
+        .select(`
+            id,
+            food_id,
+            servings,
+            eaten_on_date,
+            created_at,
+            Foods(
+                id,
+                name,
+                measurement_unit,
+                serving_size
+            )
+        `)
+        .eq('eaten_on_date', date)
+        .order('created_at', { ascending: false });
 }
 
 // ============================================================================
@@ -420,7 +445,7 @@ export async function resolveMacroId(macroIdentifier) {
 export async function getMacroConsumptionForDate(date, macroId) {
     try {
         const { data: consumptionData, error } = await supabase
-            .from('FoodEntry')
+            .from('food-entry')
             .select(`
                 id,
                 servings,
@@ -471,7 +496,7 @@ export async function getMacroConsumptionForDate(date, macroId) {
 export async function getAllMacroConsumptionForDate(date) {
     try {
         const { data: consumptionData, error } = await supabase
-            .from('FoodEntry')
+            .from('food-entry')
             .select(`
                 id,
                 servings,

@@ -40,7 +40,7 @@ Used to express units of measurement across the app.
 
 ## Tables
 
-### `macros`
+### `Macros`
 
 Stores the list of trackable macros/nutrients (e.g. Protein, Carbs, Fat, Calories).
 
@@ -55,7 +55,7 @@ Stores the list of trackable macros/nutrients (e.g. Protein, Carbs, Fat, Calorie
 
 ---
 
-### `foods`
+### `Foods`
 
 Master list of food items that can be logged.
 
@@ -77,11 +77,11 @@ Junction table linking foods to their macro content. Stores how much of a given 
 |----------------|---------------|------------------------------|--------------------------------------------------|
 | `id`           | `int8`        | PRIMARY KEY, IDENTITY, NOT NULL | Auto-incrementing primary key                 |
 | `created_at`   | `timestamptz` | NOT NULL                     | Row creation timestamp                           |
-| `food_id`      | `int8`        | FOREIGN KEY, NOT NULL        | References `foods.id`                            |
-| `macro_id`     | `int8`        | FOREIGN KEY, NOT NULL        | References `macros.id`                           |
+| `food_id`      | `int8`        | FOREIGN KEY, NOT NULL        | References `Foods.id`                            |
+| `macro_id`     | `int8`        | FOREIGN KEY, NOT NULL        | References `Macros.id`                           |
 | `value`        | `float8`      | NOT NULL                     | Amount of the macro per baseline `serving_size` of food |
 
-**Example**: Food "Oats" has baseline `serving_size = 100` (g) in `foods` table, `macro_id → Protein` with `value = 13.5` (g of protein per 100g).
+**Example**: Food "Oats" has baseline `serving_size = 100` (g) in `Foods` table, `macro_id → Protein` with `value = 13.5` (g of protein per 100g).
 
 ---
 
@@ -105,13 +105,13 @@ Logs of food consumed by a user on a specific date.
 
 ```
 macros (1) ──────────────── (M) food-macro
-foods  (1) ──────────────── (M) food-macro
-foods  (1) ──────────────── (M) food-entry
+Foods  (1) ──────────────── (M) food-macro
+Foods  (1) ──────────────── (M) food-entry
 ```
 
-- `food-macro.food_id` → `foods.id`
-- `food-macro.macro_id` → `macros.id`
-- `food-entry.food_id` → `foods.id` *(nullable)*
+- `food-macro.food_id` → `Foods.id`
+- `food-macro.macro_id` → `Macros.id`
+- `food-entry.food_id` → `Foods.id` *(nullable)*
 
 **To calculate total macro intake for a day:**
 1. Get all `food-entry` rows for the target date

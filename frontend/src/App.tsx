@@ -9,7 +9,7 @@ import AddFoodModal from './components/AddFoodModal';
 import FoodProfileModal from './components/FoodProfileModal';
 import FoodSourcePane from './components/FoodSourcePane';
 import ConnectionError from './components/ConnectionError';
-import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood, createFoodEntry, createFoodEntryByAmount } from './services/api';
+import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood, createFoodEntry, createFoodEntryByAmount, fetchFoodEntriesByDate } from './services/api';
 
 const DEFAULT_CONFIG: UserConfig = {
   trackedNutrients: []
@@ -17,13 +17,74 @@ const DEFAULT_CONFIG: UserConfig = {
 
 const SAMPLE_FOOD_DATABASE: FoodItem[] = [];
 
+const getTodayDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getYesterdayDate = () => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const year = yesterday.getFullYear();
+  const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+  const day = String(yesterday.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toDateTimestamp = (dateStr: string) => {
+  // Use midday to reduce timezone boundary shifts when backend converts timestamp to date.
+  return new Date(`${dateStr}T12:00:00`).getTime();
+};
+
+/**
+ * Convert fetched food entries to DailyStats by looking up macros in foodDatabase
+ */
+const buildDailyStatsFromEntries = (entries: any[], foodDatabase: FoodItem[], date: string): DailyStats => {
+  const foods: ConsumedFood[] = [];
+  const dailyNutrients: Record<string, number> = {};
+
+  entries.forEach((entry: any) => {
+    const food = foodDatabase.find(f => f.id === entry.food_id.toString());
+    if (!food) {
+      console.warn(`[App] Food ${entry.food_id} not found in database`);
+      return;
+    }
+
+    // Scale food macros by servings
+    const scaledNutrients: Record<string, number> = {};
+    Object.entries(food.nutrients).forEach(([macroId, macroValue]) => {
+      const scaled = (macroValue as number) * entry.servings;
+      scaledNutrients[macroId] = scaled;
+      dailyNutrients[macroId] = (dailyNutrients[macroId] || 0) + scaled;
+      console.log(`[App] Food ${food.name}, macro ${macroId}: ${macroValue} * ${entry.servings} = ${scaled}`);
+    });
+
+    foods.push({
+      foodId: entry.food_id.toString(),
+      foodName: entry.Foods?.name || 'Unknown Food',
+      serving: `${entry.servings} servings`,
+      image: `https://picsum.photos/seed/${(entry.Foods?.name || 'unknown').toLowerCase().replace(/\s+/g, '-')}/200/200`,
+      nutrients: scaledNutrients
+    });
+  });
+
+  return {
+    date,
+    foods,
+    nutrients: dailyNutrients
+  };
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('main');
   const [config, setConfig] = useState<UserConfig>(DEFAULT_CONFIG);
   const [dailyLogs, setDailyLogs] = useState<DailyStats[]>([]);
   const [foodDatabase, setFoodDatabase] = useState<FoodItem[]>([]);
   const [measurementUnits, setMeasurementUnits] = useState<string[]>([]);
-  const [currentDate, setCurrentDate] = useState('2026-04-18');
+  const [currentDate, setCurrentDate] = useState(getTodayDate());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFoodProfileModalOpen, setIsFoodProfileModalOpen] = useState(false);
   const [isAddFoodModalOpen, setIsAddFoodModalOpen] = useState(false);
@@ -31,7 +92,7 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
-  const [selectedFoodsForEntry, setSelectedFoodsForEntry] = useState<{ foodId: string; foodName: string; amount: string; units: string }[]>([]);
+  const [selectedFoodsForEntry, setSelectedFoodsForEntry] = useState<{ foodId: string; foodName: string; amount: string; units: string; eatenOnDate: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -103,6 +164,7 @@ export default function App() {
         });
         
         setFoodDatabase(foodItems);
+        
         setIsLoading(false);
         setConnectionError(false);
         setIsRetrying(false);
@@ -194,7 +256,35 @@ export default function App() {
     };
   }, [connectionError, isRetrying]);
 
+  useEffect(() => {
+    const loadEntriesForSelectedDate = async () => {
+      if (foodDatabase.length === 0) return;
+
+      try {
+        console.log('[App] Fetching food entries for date:', currentDate);
+        const entriesResponse = await fetchFoodEntriesByDate(toDateTimestamp(currentDate));
+        const entries = entriesResponse.data || [];
+
+        setDailyLogs(prevLogs => {
+          const otherLogs = prevLogs.filter(log => log.date !== currentDate);
+          if (entries.length === 0) {
+            return otherLogs;
+          }
+
+          const selectedDateLog = buildDailyStatsFromEntries(entries, foodDatabase, currentDate);
+          return [...otherLogs, selectedDateLog];
+        });
+      } catch (error) {
+        console.error('[App] Failed to fetch food entries for selected date:', error);
+      }
+    };
+
+    loadEntriesForSelectedDate();
+  }, [currentDate, foodDatabase]);
+
   const stats = dailyLogs.find(log => log.date === currentDate) || { date: currentDate, nutrients: {}, foods: [] };
+  console.log('[App] Current stats for date', currentDate, ':', stats);
+  console.log('[App] Stats nutrients:', stats.nutrients);
   
   const trackedNutrients: TrackedNutrient[] = config.trackedNutrients
     .filter(n => n.visible !== false)
@@ -202,13 +292,15 @@ export default function App() {
       ...n,
       value: stats.nutrients[n.id] || 0
     }));
+  
+  console.log('[App] Tracked nutrients with values:', trackedNutrients);
 
-  const handleAddFood = (foodId: string, amount: number, units: string) => {
+  const handleAddFood = (foodId: string, amount: number, units: string, eatenOnDate: string = currentDate) => {
     const food = foodDatabase.find(f => f.id === foodId);
     if (!food) return;
 
     // Debug: trace inputs for first-add edge cases
-    console.log('handleAddFood called', { foodId, amount, units, serving_size: food.serving_size, measurement_unit: food.measurement_unit });
+    console.log('handleAddFood called', { foodId, amount, units, eatenOnDate, serving_size: food.serving_size, measurement_unit: food.measurement_unit });
 
     // Calculate servings multiplier
     let servingsMultiplier = 1;
@@ -236,7 +328,7 @@ export default function App() {
     };
 
     setDailyLogs(prevLogs => {
-      const logIndex = prevLogs.findIndex(log => log.date === currentDate);
+      const logIndex = prevLogs.findIndex(log => log.date === eatenOnDate);
       const newLogs = [...prevLogs];
       
       if (logIndex !== -1) {
@@ -254,7 +346,7 @@ export default function App() {
         newLogs[logIndex] = updatedLog;
       } else {
         const newLog: DailyStats = {
-          date: currentDate,
+          date: eatenOnDate,
           foods: [consumedFood],
           nutrients: { ...consumedFood.nutrients },
         };
@@ -359,6 +451,7 @@ export default function App() {
       foodName: food.name,
       amount: '1',
       units: food.measurement_unit,
+      eatenOnDate: currentDate,
     };
     setSelectedFoodsForEntry([...selectedFoodsForEntry, newFood]);
     setFoodSearchQuery('');
@@ -383,18 +476,18 @@ export default function App() {
       if (amount <= 0) continue;
 
       // Optimistic UI update
-      console.log('committing food entry', { food, parsedAmount: amount, units: food.units });
-      handleAddFood(food.foodId, amount, food.units);
+      console.log('committing food entry', { food, parsedAmount: amount, units: food.units, eatenOnDate: food.eatenOnDate });
+      handleAddFood(food.foodId, amount, food.units, food.eatenOnDate);
 
       // Persist to backend
       try {
         if (food.units.toLowerCase() === 'servings') {
           // amount represents servings
-          const p = createFoodEntry(parseInt(food.foodId, 10), amount, currentDate);
+          const p = createFoodEntry(parseInt(food.foodId, 10), amount, food.eatenOnDate);
           promises.push(p);
         } else {
           // amount represents measurement unit; backend will calculate servings
-          const p = createFoodEntryByAmount(parseInt(food.foodId, 10), amount, currentDate);
+          const p = createFoodEntryByAmount(parseInt(food.foodId, 10), amount, food.eatenOnDate);
           promises.push(p);
         }
       } catch (err) {
@@ -416,6 +509,16 @@ export default function App() {
     setSelectedFoodsForEntry([]);
     setFoodSearchQuery('');
   };
+
+  const todayDate = getTodayDate();
+  const yesterdayDate = getYesterdayDate();
+
+  let currentDateLabel = currentDate;
+  if (currentDate === todayDate) {
+    currentDateLabel = 'Today';
+  } else if (currentDate === yesterdayDate) {
+    currentDateLabel = 'Yesterday';
+  }
 
   return (
     <>
@@ -460,7 +563,7 @@ export default function App() {
               className="flex items-center gap-3 bg-surface-container border border-outline px-6 py-3 hover:bg-surface-container-high transition-all"
             >
               <span className="font-headline text-sm uppercase tracking-[2px] text-primary">
-                {currentDate === '2026-04-18' ? 'Today' : currentDate === '2026-04-19' ? 'Tomorrow' : currentDate}
+                {currentDateLabel}
               </span>
               <ChevronDown size={16} className={`text-primary transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -468,16 +571,24 @@ export default function App() {
             {isDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 w-64 bg-surface-container border border-outline shadow-2xl z-50">
                 <button 
-                  onClick={() => { setCurrentDate('2026-04-18'); setIsDropdownOpen(false); }}
+                  onClick={() => {
+                    setCurrentDate(todayDate);
+                    setIsDropdownOpen(false);
+                    setShowCalendar(false);
+                  }}
                   className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
                 >
                   Today
                 </button>
                 <button 
-                  onClick={() => { setCurrentDate('2026-04-19'); setIsDropdownOpen(false); }}
+                  onClick={() => {
+                    setCurrentDate(yesterdayDate);
+                    setIsDropdownOpen(false);
+                    setShowCalendar(false);
+                  }}
                   className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
                 >
-                  Tomorrow
+                  Yesterday
                 </button>
                 <button 
                   onClick={() => setShowCalendar(!showCalendar)}
@@ -489,20 +600,17 @@ export default function App() {
                 
                 {showCalendar && (
                   <div className="p-4 bg-surface border-t border-outline">
-                    <div className="grid grid-cols-7 gap-1 text-[8px] text-on-surface-variant uppercase text-center mb-2">
-                      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                    </div>
-                    <div className="grid grid-cols-7 gap-1">
-                      {Array.from({ length: 30 }).map((_, i) => (
-                        <button 
-                          key={i}
-                          onClick={() => { setCurrentDate(`2026-04-${String(i + 1).padStart(2, '0')}`); setIsDropdownOpen(false); setShowCalendar(false); }}
-                          className={`w-full aspect-square text-[10px] flex items-center justify-center hover:bg-primary/20 ${currentDate.endsWith(String(i + 1).padStart(2, '0')) ? 'bg-primary text-on-primary' : 'text-on-surface'}`}
-                        >
-                          {i + 1}
-                        </button>
-                      ))}
-                    </div>
+                    <input
+                      type="date"
+                      max={todayDate}
+                      value={currentDate}
+                      onChange={(e) => {
+                        setCurrentDate(e.target.value);
+                        setIsDropdownOpen(false);
+                        setShowCalendar(false);
+                      }}
+                      className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                    />
                   </div>
                 )}
               </div>
@@ -581,44 +689,54 @@ export default function App() {
                         {selectedFoodsForEntry.map((food, index) => {
                           const foodData = foodDatabase.find(f => f.id === selectedFoodsForEntry[index].foodId);
                           return (
-                            <div key={index} className="bg-surface rounded-none border border-outline p-3 flex gap-3 items-end">
-                              <div className="flex-1">
-                                <label className="block text-[9px] font-black uppercase tracking-[1px] text-on-surface-variant mb-1">
+                            <div key={index} className="bg-surface rounded-none border border-outline p-3 flex flex-col gap-3">
+                              <div className="flex justify-between items-start">
+                                <label className="text-[9px] font-black uppercase tracking-[1px] text-on-surface-variant">
                                   {food.foodName}
                                 </label>
-                                <div className="flex gap-2">
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={food.amount}
-                                    onChange={(e) => handleAmountChange(index, e.target.value)}
-                                    className="flex-1 bg-surface-container-low text-on-surface font-headline text-sm rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                                    placeholder="0"
-                                  />
-                                  <select
-                                    value={food.units}
-                                    onChange={(e) => {
-                                      const updated = [...selectedFoodsForEntry];
-                                      updated[index].units = e.target.value;
-                                      setSelectedFoodsForEntry(updated);
-                                    }}
-                                    className="w-20 bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                                  >
-                                    {foodData && (
-                                      <>
-                                        <option value={foodData.measurement_unit}>{foodData.measurement_unit}</option>
-                                        <option value="servings">servings</option>
-                                      </>
-                                    )}
-                                  </select>
-                                </div>
+                                <button
+                                  onClick={() => handleRemoveSelectedFood(index)}
+                                  className="text-on-surface-variant hover:text-primary transition-all p-1"
+                                >
+                                  <X size={16} />
+                                </button>
                               </div>
-                              <button
-                                onClick={() => handleRemoveSelectedFood(index)}
-                                className="text-on-surface-variant hover:text-primary transition-all p-1"
-                              >
-                                <X size={16} />
-                              </button>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={food.amount}
+                                  onChange={(e) => handleAmountChange(index, e.target.value)}
+                                  className="flex-1 bg-surface-container-low text-on-surface font-headline text-sm rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                  placeholder="0"
+                                />
+                                <select
+                                  value={food.units}
+                                  onChange={(e) => {
+                                    const updated = [...selectedFoodsForEntry];
+                                    updated[index].units = e.target.value;
+                                    setSelectedFoodsForEntry(updated);
+                                  }}
+                                  className="w-20 bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                >
+                                  {foodData && (
+                                    <>
+                                      <option value={foodData.measurement_unit}>{foodData.measurement_unit}</option>
+                                      <option value="servings">servings</option>
+                                    </>
+                                  )}
+                                </select>
+                              </div>
+                              <input
+                                type="date"
+                                value={food.eatenOnDate}
+                                onChange={(e) => {
+                                  const updated = [...selectedFoodsForEntry];
+                                  updated[index].eatenOnDate = e.target.value;
+                                  setSelectedFoodsForEntry(updated);
+                                }}
+                                className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                              />
                             </div>
                           );
                         })}

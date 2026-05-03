@@ -288,6 +288,30 @@ export async function createFoodEntryByAmount(foodId: number, amount: number, ea
     }
 }
 
+/**
+ * Fetch all food entries for a specific date
+ * @param timestamp - Unix timestamp in milliseconds (defaults to current time)
+ */
+export async function fetchFoodEntriesByDate(timestamp: number = Date.now()) {
+    try {
+        console.log('[API Service] Fetching food entries for timestamp:', timestamp);
+        const response = await fetch(`${BACKEND_URL}/api/food-entries?timestamp=${timestamp}`);
+        console.log('[API Service] Fetch food entries response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch food entries: ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log('[API Service] Food entries fetched:', result);
+        return result;
+    } catch (error) {
+        console.error('[API Service] Error fetching food entries:', error);
+        if (error instanceof TypeError) {
+            console.error('[API Service] Network error - check if backend is running and CORS is enabled');
+        }
+        throw error;
+    }
+}
+
 // ============================================================================
 // CONSUMPTION API
 // ============================================================================

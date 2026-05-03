@@ -7,6 +7,7 @@ import {
     insertFoodEntryByAmount,
     updateFoodEntry,
     deleteFoodEntry,
+    getFoodEntriesByDate,
     insertFoodMacro,
     updateFoodMacro,
     deleteFoodMacro,
@@ -70,6 +71,7 @@ app.get('/test', async (req, res) => {
  */
 app.post('/api/food-entries', async (req, res) => {
     const { foodId, servings, eatenOnDate } = req.body;
+    console.log('[API] POST /api/food-entries with body:', { foodId, servings, eatenOnDate });
 
     if (!foodId || servings === undefined || !eatenOnDate) {
         return res.status(400).json({ error: 'Missing required fields: foodId, servings, eatenOnDate' });
@@ -77,8 +79,10 @@ app.post('/api/food-entries', async (req, res) => {
 
     const { data, error } = await insertFoodEntry(foodId, servings, eatenOnDate);
     if (error) {
+        console.error('[API] POST /api/food-entries error:', error);
         return res.status(500).json({ error });
     }
+    console.log('[API] POST /api/food-entries success, created:', data);
     res.status(201).json({ data });
 });
 
@@ -89,6 +93,7 @@ app.post('/api/food-entries', async (req, res) => {
  */
 app.post('/api/food-entries/by-amount', async (req, res) => {
     const { foodId, amount, eatenOnDate } = req.body;
+    console.log('[API] POST /api/food-entries/by-amount with body:', { foodId, amount, eatenOnDate });
 
     if (!foodId || amount === undefined || !eatenOnDate) {
         return res.status(400).json({ error: 'Missing required fields: foodId, amount, eatenOnDate' });
@@ -96,8 +101,10 @@ app.post('/api/food-entries/by-amount', async (req, res) => {
 
     const { data, error } = await insertFoodEntryByAmount(foodId, amount, eatenOnDate);
     if (error) {
+        console.error('[API] POST /api/food-entries/by-amount error:', error);
         return res.status(500).json({ error });
     }
+    console.log('[API] POST /api/food-entries/by-amount success, created:', data);
     res.status(201).json({ data });
 });
 
@@ -109,6 +116,7 @@ app.post('/api/food-entries/by-amount', async (req, res) => {
 app.put('/api/food-entries/:entryId', async (req, res) => {
     const { entryId } = req.params;
     const updates = req.body;
+    console.log('[API] PUT /api/food-entries/:entryId with params and body:', { entryId, updates });
 
     if (!entryId) {
         return res.status(400).json({ error: 'Missing entryId parameter' });
@@ -116,8 +124,10 @@ app.put('/api/food-entries/:entryId', async (req, res) => {
 
     const { data, error } = await updateFoodEntry(entryId, updates);
     if (error) {
+        console.error('[API] PUT /api/food-entries/:entryId error:', error);
         return res.status(500).json({ error });
     }
+    console.log('[API] PUT /api/food-entries/:entryId success, updated:', data);
     res.status(200).json({ data });
 });
 
@@ -127,6 +137,7 @@ app.put('/api/food-entries/:entryId', async (req, res) => {
  */
 app.delete('/api/food-entries/:entryId', async (req, res) => {
     const { entryId } = req.params;
+    console.log('[API] DELETE /api/food-entries/:entryId with params:', { entryId });
 
     if (!entryId) {
         return res.status(400).json({ error: 'Missing entryId parameter' });
@@ -134,8 +145,48 @@ app.delete('/api/food-entries/:entryId', async (req, res) => {
 
     const { data, error } = await deleteFoodEntry(entryId);
     if (error) {
+        console.error('[API] DELETE /api/food-entries/:entryId error:', error);
         return res.status(500).json({ error });
     }
+    console.log('[API] DELETE /api/food-entries/:entryId success, deleted:', data);
+    res.status(200).json({ data });
+});
+
+/**
+ * Get all food entries for a specific date
+ * GET /api/food-entries?timestamp=<unix_timestamp_in_milliseconds>
+ * Query Parameters:
+ *   - timestamp (required): Unix timestamp in milliseconds
+ * Returns: Array of food entries with full food and macro details for that date
+ */
+app.get('/api/food-entries', async (req, res) => {
+    const { timestamp } = req.query;
+    console.log('[API] GET /api/food-entries with query:', { timestamp });
+
+    if (!timestamp) {
+        return res.status(400).json({ error: 'Missing required query parameter: timestamp' });
+    }
+
+    // Convert unix timestamp (in milliseconds) to YYYY-MM-DD format
+    const date = new Date(parseInt(timestamp));
+    if (isNaN(date.getTime())) {
+        return res.status(400).json({ error: 'Invalid timestamp format' });
+    }
+
+    // Format as YYYY-MM-DD in local timezone
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+
+    console.log('[API] GET /api/food-entries converted timestamp to date:', { timestamp, dateString });
+
+    const { data, error } = await getFoodEntriesByDate(dateString);
+    if (error) {
+        console.error('[API] GET /api/food-entries error:', error);
+        return res.status(500).json({ error });
+    }
+    console.log('[API] GET /api/food-entries success:', data ? `${data.length} entries` : 'no data');
     res.status(200).json({ data });
 });
 
