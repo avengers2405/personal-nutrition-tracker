@@ -6,28 +6,54 @@ import { FoodItem } from '../types';
 interface FoodProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateFood: (food: FoodItem) => void;
+  onSaveFood: (food: FoodItem, isEditing: boolean) => void;
   trackedNutrients: { id: string; name: string; goal: number; unit: string }[];
   measurementUnits?: string[];
+  initialFood?: FoodItem | null;
 }
 
 export default function FoodProfileModal({
   isOpen,
   onClose,
-  onCreateFood,
+  onSaveFood,
   trackedNutrients,
   measurementUnits = [],
+  initialFood = null,
 }: FoodProfileModalProps) {
   const [foodName, setFoodName] = useState('');
   const [serving, setServing] = useState('');
   const [measurementUnit, setMeasurementUnit] = useState(measurementUnits[0] || 'g');
   const [image, setImage] = useState('');
-  const [nutrients, setNutrients] = useState<{ [id: string]: number }>({});
+  const [nutrients, setNutrients] = useState<{ [id: string]: string }>({});
+
+  const normalizeNutrientValues = (source: Record<string, number | string>) =>
+    Object.fromEntries(
+      Object.entries(source).map(([id, value]) => [id, value === undefined || value === null ? '' : String(value)])
+    ) as { [id: string]: string };
+
+  const normalizeEditedNutrients = () =>
+    Object.fromEntries(
+      Object.entries(nutrients).map(([id, value]) => [id, Number(value)])
+    ) as { [id: string]: number };
+  
+  const isEditing = !!initialFood;
+
+  useEffect(() => {
+    if (isOpen && initialFood) {
+      setFoodName(initialFood.name);
+      setServing(String(initialFood.serving_size || ''));
+      setMeasurementUnit(initialFood.measurement_unit || measurementUnits[0] || 'g');
+      setImage(initialFood.image || '');
+      setNutrients(normalizeNutrientValues(initialFood.nutrients || {}));
+    } else if (isOpen && !initialFood) {
+      resetForm();
+    }
+  }, [isOpen, initialFood, measurementUnits]);
 
   const handleNutrientChange = (nutrientId: string, value: string) => {
     setNutrients({
       ...nutrients,
-      [nutrientId]: parseFloat(value) || 0,
+      [nutrientId]: value,
     });
   };
 
@@ -37,24 +63,25 @@ export default function FoodProfileModal({
       return;
     }
 
-    // Validate all nutrients are positive integers
+    // Validate all nutrients are positive numbers
     for (const [nutrientId, value] of Object.entries(nutrients)) {
       const numValue = Number(value);
-      if (isNaN(numValue) || numValue < 0 || !Number.isInteger(numValue)) {
-        alert('Please enter only positive integers for nutrient values');
+      if (isNaN(numValue) || numValue < 0) {
+        alert('Please enter only positive numbers for nutrient values');
         return;
       }
     }
 
     const newFood: FoodItem = {
-      id: `f-${Date.now()}`,
+      id: isEditing ? initialFood!.id : `f-${Date.now()}`,
+      serving_size: parseFloat(serving) || 1,
+      measurement_unit: measurementUnit || (measurementUnits[0] || 'g'),
       name: foodName,
-      serving: measurementUnit ? `${serving} ${measurementUnit}` : `${serving} ${measurementUnits[0] || 'g'}`,
       image: image || 'https://picsum.photos/seed/food/200/200',
-      nutrients,
+      nutrients: normalizeEditedNutrients(),
     };
 
-    onCreateFood(newFood);
+    onSaveFood(newFood, isEditing);
     resetForm();
     onClose();
   };
@@ -68,7 +95,23 @@ export default function FoodProfileModal({
   };
 
   const handleClose = () => {
-    const hasUnsavedChanges = foodName.trim() !== '' || serving.trim() !== '' || (measurementUnit !== (measurementUnits[0] || 'g')) || image.trim() !== '' || Object.keys(nutrients).length > 0;
+    let hasUnsavedChanges = false;
+    
+    if (isEditing && initialFood) {
+      const initialServing = String(initialFood.serving_size || '');
+      const initialUnit = initialFood.measurement_unit || measurementUnits[0] || 'g';
+      
+      const nutrientsChanged = JSON.stringify(nutrients) !== JSON.stringify(normalizeNutrientValues(initialFood.nutrients || {}));
+      
+      hasUnsavedChanges = foodName !== initialFood.name || 
+                          serving !== initialServing || 
+                          measurementUnit !== initialUnit || 
+                          image !== (initialFood.image || '') || 
+                          nutrientsChanged;
+    } else {
+      hasUnsavedChanges = foodName.trim() !== '' || serving.trim() !== '' || (measurementUnit !== (measurementUnits[0] || 'g')) || image.trim() !== '' || Object.keys(nutrients).length > 0;
+    }
+
     if (hasUnsavedChanges) {
       if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
         resetForm();
@@ -92,7 +135,7 @@ export default function FoodProfileModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex flex-col justify-end">
+        <div className="fixed inset-0 z-70 flex flex-col justify-end">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -111,7 +154,7 @@ export default function FoodProfileModal({
             {/* Header */}
             <div className="px-8 pt-8 pb-4 flex justify-between items-center border-b border-outline">
               <h2 className="font-headline text-2xl font-normal text-on-surface uppercase tracking-[2px]">
-                Create Food Profile
+                {isEditing ? 'Edit Food Profile' : 'Create Food Profile'}
               </h2>
               <button
                 onClick={handleClose}
@@ -205,7 +248,8 @@ export default function FoodProfileModal({
                       <div className="flex gap-2 items-end">
                         <input
                           type="text"
-                          value={nutrients[nutrient.id] || ''}
+                          inputMode="decimal"
+                          value={nutrients[nutrient.id] ?? ''}
                           onChange={(e) => handleNutrientChange(nutrient.id, e.target.value)}
                           className="flex-1 bg-surface-container-low text-on-surface font-headline text-lg rounded-none py-2 px-3 border border-outline focus:border-primary focus:ring-0 transition-all"
                           placeholder="0"
@@ -226,7 +270,7 @@ export default function FoodProfileModal({
                 onClick={handleSubmit}
                 className="w-full bg-primary text-on-primary px-10 py-4 font-headline text-sm uppercase tracking-[3px] transition-all hover:shadow-[0_0_20px_rgba(185,151,91,0.4)] active:scale-[0.99] flex items-center justify-center space-x-3"
               >
-                <span>Create Food Profile</span>
+                <span>{isEditing ? 'Save Changes' : 'Create Food Profile'}</span>
                 <Check size={20} strokeWidth={3} />
               </button>
             </div>

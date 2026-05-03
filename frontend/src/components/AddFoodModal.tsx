@@ -42,7 +42,7 @@ export default function AddFoodModal({
       foodId: food.id,
       foodName: food.name,
       amount: '',
-      units: food.serving.split('(')[0].trim(),
+      units: food.measurement_unit,
     };
     setSelectedFoods([...selectedFoods, newFood]);
     setSearchQuery('');
@@ -61,7 +61,7 @@ export default function AddFoodModal({
   const handleCommit = () => {
     selectedFoods.forEach(food => {
       const amount = parseFloat(food.amount);
-      if (!isNaN(amount) && amount > 0 && Number.isInteger(amount)) {
+      if (!isNaN(amount) && amount > 0) {
         onAddFood(food.foodId, amount, food.units);
       }
     });
@@ -143,7 +143,7 @@ export default function AddFoodModal({
                               {food.name}
                             </p>
                             <p className="text-[10px] text-on-surface-variant uppercase tracking-[0.5px]">
-                              {food.serving}
+                              {`${food.serving_size || 1} ${food.measurement_unit}`}
                             </p>
                           </div>
                           <Plus size={16} className="text-primary opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" />
@@ -205,14 +205,8 @@ export default function AddFoodModal({
                               }}
                               className="w-full bg-surface-container-low text-on-surface font-body text-sm rounded-none py-2 px-3 border border-outline focus:border-primary focus:ring-0 transition-all"
                             >
-                              {measurementUnits.map((u) => (
-                                <option key={u} value={u}>
-                                  {u}
-                                </option>
-                              ))}
-                              {measurementUnits.length === 0 && (
-                                <option value={food.units}>{food.units || 'g'}</option>
-                              )}
+                              <option value={food.units}>{food.units || 'g'}</option>
+                              <option value="servings">servings</option>
                             </select>
                           </div>
                         </div>

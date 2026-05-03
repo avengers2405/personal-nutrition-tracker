@@ -308,7 +308,14 @@ export async function getAllFoods() {
     console.log('[DB] getAllFoods called');
     const result = await supabase
         .from('Foods')
-        .select('*');
+        .select(`
+            *,
+            "food-macro"(
+                id,
+                macro_id,
+                value
+            )
+        `);
     console.log('[DB] getAllFoods result:', result.data ? `✓ ${result.data.length} foods found` : `✗ Error: ${result.error?.message}`);
     return result;
 }

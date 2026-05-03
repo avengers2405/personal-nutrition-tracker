@@ -9,7 +9,7 @@ import AddFoodModal from './components/AddFoodModal';
 import FoodProfileModal from './components/FoodProfileModal';
 import FoodSourcePane from './components/FoodSourcePane';
 import ConnectionError from './components/ConnectionError';
-import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood } from './services/api';
+import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood, createFoodEntry, createFoodEntryByAmount } from './services/api';
 
 const DEFAULT_CONFIG: UserConfig = {
   trackedNutrients: []
@@ -26,6 +26,7 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState('2026-04-18');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFoodProfileModalOpen, setIsFoodProfileModalOpen] = useState(false);
+  const [isAddFoodModalOpen, setIsAddFoodModalOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
@@ -83,13 +84,23 @@ export default function App() {
         }
         
         // Convert foods to FoodItem format
-        const foodItems: FoodItem[] = foods.map((food: any) => ({
-          id: food.id.toString(),
-          name: food.name,
-          serving: `${food.serving_size || 1} ${food.measurement_unit}`,
-          image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
-          nutrients: {} // Nutrients will be fetched separately if needed
-        }));
+        const foodItems: FoodItem[] = foods.map((food: any) => {
+          const fetchedNutrients: Record<string, number> = {};
+          if (food['food-macro'] && Array.isArray(food['food-macro'])) {
+            food['food-macro'].forEach((fm: any) => {
+              fetchedNutrients[fm.macro_id.toString()] = fm.value;
+            });
+          }
+
+          return {
+            id: food.id.toString(),
+            name: food.name,
+            image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
+            nutrients: fetchedNutrients,
+            measurement_unit: food.measurement_unit,
+            serving_size: food.serving_size || 1
+          } as FoodItem;
+        });
         
         setFoodDatabase(foodItems);
         setIsLoading(false);
@@ -149,10 +160,11 @@ export default function App() {
             const foodItems: FoodItem[] = foods.map((food: any) => ({
               id: food.id.toString(),
               name: food.name,
-              serving: `${food.serving_size || 1} ${food.measurement_unit}`,
               image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
-              nutrients: {}
-            }));
+              nutrients: {},
+              measurement_unit: food.measurement_unit,
+              serving_size: food.serving_size || 1
+            } as FoodItem));
             
             setFoodDatabase(foodItems);
             setConnectionError(false);
@@ -195,12 +207,32 @@ export default function App() {
     const food = foodDatabase.find(f => f.id === foodId);
     if (!food) return;
 
+    // Debug: trace inputs for first-add edge cases
+    console.log('handleAddFood called', { foodId, amount, units, serving_size: food.serving_size, measurement_unit: food.measurement_unit });
+
+    // Calculate servings multiplier
+    let servingsMultiplier = 1;
+    
+    if (units.toLowerCase() === 'servings') {
+      servingsMultiplier = amount;
+    } else if (units === food.measurement_unit) {
+      servingsMultiplier = amount / food.serving_size;
+    }
+
+    console.log('computed servingsMultiplier', { servingsMultiplier });
+
+    // Scale nutrients by servings multiplier
+    const scaledNutrients: { [key: string]: number } = {};
+    Object.entries(food.nutrients).forEach(([nutrientId, value]) => {
+      scaledNutrients[nutrientId] = value * servingsMultiplier;
+    });
+
     const consumedFood: ConsumedFood = {
       foodId: food.id,
       foodName: food.name,
       serving: `${amount} ${units}`,
       image: food.image,
-      nutrients: food.nutrients,
+      nutrients: scaledNutrients,
     };
 
     setDailyLogs(prevLogs => {
@@ -224,7 +256,7 @@ export default function App() {
         const newLog: DailyStats = {
           date: currentDate,
           foods: [consumedFood],
-          nutrients: { ...food.nutrients },
+          nutrients: { ...consumedFood.nutrients },
         };
         newLogs.push(newLog);
       }
@@ -238,20 +270,16 @@ export default function App() {
       // First update the UI optimistically
       setFoodDatabase([...foodDatabase, newFood]);
       
-      // serving comes formatted as `${servingAmount} ${measurementUnit}` from the modal
-      // We need to parse it back
-      const parts = newFood.serving.split(' ');
-      const servingAmountStr = parts[0];
-      const measurementUnitStr = parts.slice(1).join(' ');
-      
-      const servingAmount = parseFloat(servingAmountStr);
-      
-      await createFood(
-        newFood.name,
-        measurementUnitStr || 'g',
-        isNaN(servingAmount) ? 100 : servingAmount,
-        newFood.nutrients
-      );
+      // Modal now provides `serving_size` (numeric) and `measurement_unit`.
+      const servingAmount = Number(newFood.serving_size) || 1;
+      const measurementUnitStr = newFood.measurement_unit || 'g';
+
+      await createFood({
+        name: newFood.name,
+        measurementUnit: measurementUnitStr,
+        servingSize: isNaN(servingAmount) ? 100 : servingAmount,
+        nutrients: newFood.nutrients,
+      });
       
       // Optionally we could refetch foods here to get actual IDs,
       // but UI is already updated so it's fine.
@@ -299,10 +327,11 @@ export default function App() {
         const foodItems: FoodItem[] = foods.map((food: any) => ({
           id: food.id.toString(),
           name: food.name,
-          serving: `${food.serving_size || 1} ${food.measurement_unit}`,
           image: `https://picsum.photos/seed/${food.name.toLowerCase().replace(/\s+/g, '-')}/200/200`,
-          nutrients: {}
-        }));
+          nutrients: {},
+          measurement_unit: food.measurement_unit,
+          serving_size: food.serving_size || 1
+        } as FoodItem));
         
         setFoodDatabase(foodItems);
         setIsLoading(false);
@@ -329,7 +358,7 @@ export default function App() {
       foodId: food.id,
       foodName: food.name,
       amount: '1',
-      units: food.serving.split('(')[0].trim(),
+      units: food.measurement_unit,
     };
     setSelectedFoodsForEntry([...selectedFoodsForEntry, newFood]);
     setFoodSearchQuery('');
@@ -345,13 +374,45 @@ export default function App() {
     setSelectedFoodsForEntry(updated);
   };
 
-  const handleCommitFoodEntry = () => {
-    selectedFoodsForEntry.forEach(food => {
+  const handleCommitFoodEntry = async () => {
+    // Persist each selected food entry to backend while updating UI optimistically
+    const promises: Promise<any>[] = [];
+
+    for (const food of selectedFoodsForEntry) {
       const amount = parseFloat(food.amount) || 0;
-      if (amount > 0) {
-        handleAddFood(food.foodId, amount, food.units);
+      if (amount <= 0) continue;
+
+      // Optimistic UI update
+      console.log('committing food entry', { food, parsedAmount: amount, units: food.units });
+      handleAddFood(food.foodId, amount, food.units);
+
+      // Persist to backend
+      try {
+        if (food.units.toLowerCase() === 'servings') {
+          // amount represents servings
+          const p = createFoodEntry(parseInt(food.foodId, 10), amount, currentDate);
+          promises.push(p);
+        } else {
+          // amount represents measurement unit; backend will calculate servings
+          const p = createFoodEntryByAmount(parseInt(food.foodId, 10), amount, currentDate);
+          promises.push(p);
+        }
+      } catch (err) {
+        console.error('Failed to enqueue persistence for food entry:', err);
       }
-    });
+    }
+
+    // Wait for all backend calls and handle errors
+    try {
+      const results = await Promise.all(promises);
+      // Optionally inspect results for errors
+      console.log('Food entry persistence results:', results);
+    } catch (err) {
+      console.error('Error persisting food entries:', err);
+      alert('Some entries failed to save to the database. They are still shown locally.');
+    }
+
+    // Clear selection and search after committing
     setSelectedFoodsForEntry([]);
     setFoodSearchQuery('');
   };
@@ -388,7 +449,7 @@ export default function App() {
           <>
         
         {/* Responsive Header */}
-        <header className="fixed top-0 left-0 lg:left-[240px] right-0 z-30 px-8 py-6 glass-header flex justify-between items-center transition-all duration-300">
+        <header className="fixed top-0 left-0 lg:left-60 right-0 z-30 px-8 py-6 glass-header flex justify-between items-center transition-all duration-300">
           <div className="flex items-center gap-2 lg:hidden">
             <h2 className="font-headline text-2xl tracking-[4px] uppercase text-primary">Aureus</h2>
           </div>
@@ -467,7 +528,7 @@ export default function App() {
                 />
 
                 {/* Food Entry Panel */}
-                <div className="flex-shrink-0 bg-surface-container rounded-none p-6 border border-outline">
+                <div className="shrink-0 bg-surface-container rounded-none p-6 border border-outline">
                   <div className="flex flex-col gap-4">
                     {/* Food Search Input */}
                     <div className="relative">
@@ -503,10 +564,10 @@ export default function App() {
                                     {food.name}
                                   </p>
                                   <p className="text-[9px] text-on-surface-variant uppercase tracking-[0.5px]">
-                                    {food.serving}
+                                    {`${food.serving_size || 1} ${food.measurement_unit || 'g'}`}
                                   </p>
                                 </div>
-                                <Plus size={16} className="text-primary opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" />
+                                <Plus size={16} className="text-primary opacity-0 group-hover:opacity-100 transition-all shrink-0" />
                               </button>
                             ))}
                           </div>
@@ -517,49 +578,50 @@ export default function App() {
                     {/* Selected Foods */}
                     {selectedFoodsForEntry.length > 0 && (
                       <div className="space-y-3 pt-4 border-t border-outline">
-                        {selectedFoodsForEntry.map((food, index) => (
-                          <div key={index} className="bg-surface rounded-none border border-outline p-3 flex gap-3 items-end">
-                            <div className="flex-1">
-                              <label className="block text-[9px] font-black uppercase tracking-[1px] text-on-surface-variant mb-1">
-                                {food.foodName}
-                              </label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={food.amount}
-                                  onChange={(e) => handleAmountChange(index, e.target.value)}
-                                  className="flex-1 bg-surface-container-low text-on-surface font-headline text-sm rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                                  placeholder="0"
-                                />
-                                <select
-                                  value={food.units}
-                                  onChange={(e) => {
-                                    const updated = [...selectedFoodsForEntry];
-                                    updated[index].units = e.target.value;
-                                    setSelectedFoodsForEntry(updated);
-                                  }}
-                                  className="w-20 bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                                >
-                                  {measurementUnits.map((u) => (
-                                    <option key={u} value={u}>
-                                      {u}
-                                    </option>
-                                  ))}
-                                  {measurementUnits.length === 0 && (
-                                    <option value={food.units}>{food.units || 'g'}</option>
-                                  )}
-                                </select>
+                        {selectedFoodsForEntry.map((food, index) => {
+                          const foodData = foodDatabase.find(f => f.id === selectedFoodsForEntry[index].foodId);
+                          return (
+                            <div key={index} className="bg-surface rounded-none border border-outline p-3 flex gap-3 items-end">
+                              <div className="flex-1">
+                                <label className="block text-[9px] font-black uppercase tracking-[1px] text-on-surface-variant mb-1">
+                                  {food.foodName}
+                                </label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={food.amount}
+                                    onChange={(e) => handleAmountChange(index, e.target.value)}
+                                    className="flex-1 bg-surface-container-low text-on-surface font-headline text-sm rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                    placeholder="0"
+                                  />
+                                  <select
+                                    value={food.units}
+                                    onChange={(e) => {
+                                      const updated = [...selectedFoodsForEntry];
+                                      updated[index].units = e.target.value;
+                                      setSelectedFoodsForEntry(updated);
+                                    }}
+                                    className="w-20 bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                  >
+                                    {foodData && (
+                                      <>
+                                        <option value={foodData.measurement_unit}>{foodData.measurement_unit}</option>
+                                        <option value="servings">servings</option>
+                                      </>
+                                    )}
+                                  </select>
+                                </div>
                               </div>
+                              <button
+                                onClick={() => handleRemoveSelectedFood(index)}
+                                className="text-on-surface-variant hover:text-primary transition-all p-1"
+                              >
+                                <X size={16} />
+                              </button>
                             </div>
-                            <button
-                              onClick={() => handleRemoveSelectedFood(index)}
-                              className="text-on-surface-variant hover:text-primary transition-all p-1"
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -567,7 +629,7 @@ export default function App() {
                     <div className="flex gap-3 pt-4 border-t border-outline">
                       <button
                         onClick={() => setIsFoodProfileModalOpen(true)}
-                        className="flex-shrink-0 bg-surface border border-outline text-on-surface px-6 py-3 font-headline text-xs uppercase tracking-[2px] transition-all hover:bg-surface-container-high active:scale-[0.98] flex items-center gap-2 rounded-none"
+                        className="shrink-0 bg-surface border border-outline text-on-surface px-6 py-3 font-headline text-xs uppercase tracking-[2px] transition-all hover:bg-surface-container-high active:scale-[0.98] flex items-center gap-2 rounded-none"
                       >
                         <Plus size={16} />
                         Create Food
@@ -621,7 +683,9 @@ export default function App() {
       <FoodProfileModal
         isOpen={isFoodProfileModalOpen}
         onClose={() => setIsFoodProfileModalOpen(false)}
-        onCreateFood={handleCreateFoodProfile}
+        onSaveFood={async (food) => {
+          await handleCreateFoodProfile(food);
+        }}
         trackedNutrients={config.trackedNutrients}
         measurementUnits={measurementUnits}
       />

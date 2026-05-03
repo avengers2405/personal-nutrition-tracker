@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { ConsumedFood } from '../types';
+import { formatNumber } from '../utils/format';
 
 interface FoodSourcePaneProps {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export default function FoodSourcePane({
                   Total
                 </span>
                 <span className="font-headline text-on-surface text-lg">
-                  {macroValue} <span className="text-[10px] text-on-surface-variant font-body">{macroUnit}</span>
+                  {formatNumber(macroValue)} <span className="text-[10px] text-on-surface-variant font-body">{macroUnit}</span>
                 </span>
               </div>
               <div className="w-full h-[8px] bg-surface-container-highest border border-outline rounded-none overflow-hidden">
@@ -88,7 +89,7 @@ export default function FoodSourcePane({
                 />
               </div>
               <div className="mt-2 text-right text-[10px] text-on-surface-variant uppercase tracking-[1px]">
-                Target: {macroGoal}{macroUnit}
+                Target: {formatNumber(macroGoal)}{macroUnit}
               </div>
             </div>
 
@@ -129,7 +130,7 @@ export default function FoodSourcePane({
                             Contribution
                           </span>
                           <span className="font-headline text-on-surface">
-                            {food.contribution}{macroUnit}
+                            {formatNumber(food.contribution)}{macroUnit}
                           </span>
                         </div>
                         <div className="w-full h-[6px] bg-surface-container-highest border border-outline rounded-none overflow-hidden">

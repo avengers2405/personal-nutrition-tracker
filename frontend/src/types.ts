@@ -9,9 +9,10 @@ export interface TrackedNutrient {
 export interface FoodItem {
   id: string;
   name: string;
-  serving: string;
   image: string;
   nutrients: { [nutrientId: string]: number };
+  measurement_unit: string;
+  serving_size: number;
 }
 
 export interface ConsumedFood {

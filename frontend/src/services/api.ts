@@ -188,13 +188,13 @@ export async function fetchFoodById(foodId: number) {
 /**
  * Create a new food
  */
-export async function createFood(name: string, measurementUnit: string, servingSize?: number, nutrients?: { [macroId: string]: number }) {
+export async function createFood(foodData: { name: string; measurementUnit: string; servingSize?: number; nutrients?: Record<string, number> }) {
     try {
-        console.log('[API Service] Creating food:', { name, measurementUnit, servingSize, nutrients });
+        console.log('[API Service] Creating food:', foodData);
         const response = await fetch(`${BACKEND_URL}/api/foods`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, measurementUnit, servingSize, nutrients })
+            body: JSON.stringify(foodData)
         });
         if (!response.ok) {
             throw new Error(`Failed to create food: ${response.statusText}`);

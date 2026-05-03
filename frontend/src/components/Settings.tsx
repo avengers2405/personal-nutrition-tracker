@@ -96,10 +96,10 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
       const nutrient = config.trackedNutrients.find(n => n.id === id);
       if (!nutrient || !nutrient.name) return;
 
-      // Validate goal is a positive integer
+      // Validate goal is a positive number
       const goalValue = Number(nutrient.goal);
-      if (isNaN(goalValue) || goalValue < 0 || !Number.isInteger(goalValue)) {
-        alert('Please enter a positive integer for the nutrient goal');
+      if (isNaN(goalValue) || goalValue < 0) {
+        alert('Please enter a positive number for the nutrient goal');
         return;
       }
 
@@ -156,6 +156,7 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
   };
 
   const addFood = () => {
+    setEditingFood(null);
     setIsFoodModalOpen(true);
   };
 
@@ -170,11 +171,12 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
   };
 
   const saveFoodNutrients = async (food: FoodItem) => {
-    // Validate all nutrients are positive integers
+    console.log("SAVE FOOD TRIGGERED");
+    // Validate all nutrients are positive numbers
     for (const [nutrientId, value] of Object.entries(food.nutrients)) {
       const numValue = Number(value);
-      if (isNaN(numValue) || numValue < 0 || !Number.isInteger(numValue)) {
-        alert('Please enter only positive integers for nutrient values');
+      if (isNaN(numValue) || numValue < 0) {
+        alert('Please enter only positive numbers for nutrient values');
         return false;
       }
     }
@@ -281,51 +283,23 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
                 <div className="flex gap-4">
                   <img src={food.image} className="w-16 h-16 object-cover border border-outline opacity-70" alt={food.name} referrerPolicy="no-referrer" />
                   <div>
-                    {editingFood === food.id ? (
-                      <input 
-                        className="bg-surface border border-outline text-on-surface p-2 text-sm mb-2" 
-                        placeholder="Food name"
-                        value={food.name} 
-                        onChange={e => setFoodDatabase(foodDatabase.map(f => f.id === food.id ? { ...f, name: e.target.value } : f))}
-                      />
-                    ) : (
-                      <h3 className="font-headline text-lg text-on-surface">{food.name}</h3>
-                    )}
-                    <p className="text-[11px] text-on-surface-variant uppercase tracking-[1px] opacity-60">{food.serving}</p>
+                    <h3 className="font-headline text-lg text-on-surface">{food.name}</h3>
+                    <p className="text-[11px] text-on-surface-variant uppercase tracking-[1px] opacity-60">{`${food.serving_size || 1} ${food.measurement_unit}`}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button 
-                    onClick={() => saveFoodNutrients(food)} 
-                    className={`p-2 transition-all ${editingFood === food.id ? 'text-primary' : 'text-on-surface-variant hover:text-primary'}`}
+                    onClick={() => {
+                        setEditingFood(food.id);
+                        setIsFoodModalOpen(true);
+                    }} 
+                    className="p-2 transition-all text-on-surface-variant hover:text-primary"
                   >
-                    {editingFood === food.id ? <Save size={18}/> : <Edit2 size={18}/>}
+                    <Edit2 size={18}/>
                   </button>
                   <button onClick={() => removeFood(food.id)} className="p-2 text-on-surface-variant hover:text-red-500 transition-all"><Trash2 size={18}/></button>
                 </div>
               </div>
-
-              {editingFood === food.id && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 border-t border-outline pt-4">
-                  {config.trackedNutrients.map(n => (
-                    <div key={n.id} className="space-y-1">
-                      <label className="text-[9px] text-on-surface-variant uppercase tracking-[1px]">{n.name} ({n.unit})</label>
-                  <input 
-                    className="bg-surface border border-outline text-on-surface p-2 text-xs" 
-                    type="text" 
-                    placeholder="Enter amount"
-                    value={food.nutrients[n.id] || ''}
-                    onChange={e => {
-                      setFoodDatabase(foodDatabase.map(f => f.id === food.id ? { 
-                        ...f, 
-                        nutrients: { ...f.nutrients, [n.id]: e.target.value as any } 
-                      } : f));
-                    }}
-                  />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -336,25 +310,34 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
         onClose={() => setIsFoodModalOpen(false)}
         trackedNutrients={config.trackedNutrients}
         measurementUnits={measurementUnits}
-        onCreateFood={async (food) => {
+        initialFood={editingFood ? foodDatabase.find(f => f.id === editingFood) : null}
+        onSaveFood={async (food, isEditing) => {
           try {
-            setFoodDatabase([...foodDatabase, food]);
+            const servingAmount = Number(food.serving_size) || 1;
+            const measurementUnitStr = food.measurement_unit || 'g';
             
-            const parts = food.serving.split(' ');
-            const servingAmountStr = parts[0];
-            const measurementUnitStr = parts.slice(1).join(' ');
-            
-            const servingAmount = parseFloat(servingAmountStr);
-            
-            await createFood(
-              food.name,
-              measurementUnitStr || 'g',
-              isNaN(servingAmount) ? 100 : servingAmount,
-              food.nutrients
-            );
+            if (isEditing && editingFood) {
+                const response = await updateFood(editingFood, {
+                    name: food.name,
+                    measurementUnit: measurementUnitStr,
+                    servingSize: servingAmount,
+                    nutrients: food.nutrients
+                });
+                const updatedFood = { ...food, id: editingFood };
+                setFoodDatabase(foodDatabase.map(f => f.id === editingFood ? updatedFood : f));
+            } else {
+                const response = await createFood({
+                    name: food.name,
+                    measurementUnit: measurementUnitStr,
+                    servingSize: servingAmount,
+                    nutrients: food.nutrients
+                });
+                const createdFood = { ...food, id: response.data.id.toString() };
+                setFoodDatabase([...foodDatabase, createdFood]);
+            }
           } catch (error) {
-            console.error('Error creating food:', error);
-            alert('Failed to save food to database. Currently only temporarily saved.');
+            console.error('Error saving food:', error);
+            alert('Failed to save food to database.');
           }
         }}
       />

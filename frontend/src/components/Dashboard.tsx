@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { TrackedNutrient } from '../types';
+import { formatNumber } from '../utils/format';
 
 interface DashboardProps {
   nutrients: TrackedNutrient[];
@@ -50,12 +51,12 @@ export default function Dashboard({ nutrients, onMacroClick, selectedMacroId }: 
                 </div>
                 <div className="w-24 text-right flex-shrink-0">
                   <span className="font-headline text-on-surface">
-                    {n.value} <span className="text-[10px] text-on-surface-variant font-body">{n.unit}</span>
+                    {formatNumber(n.value)} <span className="text-[10px] text-on-surface-variant font-body">{n.unit}</span>
                   </span>
                 </div>
                 <div className="w-24 text-right flex-shrink-0">
                   <span className="font-body text-on-surface-variant text-sm">
-                    {n.goal}{n.unit}
+                    {formatNumber(n.goal)}{n.unit}
                   </span>
                 </div>
                 <div className="w-32 flex-shrink-0">

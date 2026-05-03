@@ -26,8 +26,8 @@ export default function AddNutrientModal({
     }
 
     const numGoal = Number(goal);
-    if (isNaN(numGoal) || numGoal < 0 || !Number.isInteger(numGoal)) {
-      alert('Please enter a positive integer for the nutrient goal');
+    if (isNaN(numGoal) || numGoal < 0) {
+      alert('Please enter a positive number for the nutrient goal');
       return;
     }
 
