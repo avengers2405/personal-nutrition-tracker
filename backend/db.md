@@ -95,7 +95,7 @@ Logs of food consumed by a user on a specific date.
 | `created_at`   | `timestamptz` | NOT NULL                     | Row creation timestamp                       |
 | `food_id`      | `int8`        | FOREIGN KEY, **NULLABLE**    | References `foods.id` (nullable — see note)  |
 | `servings`     | `float8`      | NOT NULL                     | Number of servings consumed                  |
-| `eaten_on_date`| `date`        | NOT NULL                     | The date the food was consumed               |
+| `eaten_on_time`| `timestamptz` | NOT NULL                     | The timestamp the food was consumed          |
 
 > ⚠️ **Note**: `food_id` is nullable — this may be intentional to support custom/untracked food entries. Clarify and document intent here when known.
 

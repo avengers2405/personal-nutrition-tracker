@@ -17,16 +17,16 @@ console.log('[DB] Supabase client initialized');
  * Insert a new food entry record
  * @param {number} foodId - The ID of the food
  * @param {number} servings - Number of servings consumed
- * @param {string} eatenOnDate - The date the food was eaten (YYYY-MM-DD format)
+ * @param {number} eatenOnTime - The timestamp the food was eaten
  * @returns {Promise<{data: Object|null, error: Object|null}>} The inserted record or error
  */
-export async function insertFoodEntry(foodId, servings, eatenOnDate) {
+export async function insertFoodEntry(foodId, servings, eatenOnTime) {
     return supabase
         .from('food-entry')
         .insert({
             food_id: foodId,
             servings,
-            eaten_on_date: eatenOnDate,
+            eaten_on_time: new Date(eatenOnTime).toISOString(),
             created_at: new Date().toISOString()
         });
 }
@@ -35,11 +35,11 @@ export async function insertFoodEntry(foodId, servings, eatenOnDate) {
  * Insert a new food entry record by calculating servings from amount
  * @param {number} foodId - The ID of the food
  * @param {number} amount - The amount of food consumed (in the food's measurement unit)
- * @param {string} eatenOnDate - The date the food was eaten (YYYY-MM-DD format)
+ * @param {number} eatenOnTime - The timestamp the food was eaten
  * @returns {Promise<{data: Object|null, error: Object|null}>} The inserted record or error
  * @throws {Error} If food-macro data is not found or amount is invalid
  */
-export async function insertFoodEntryByAmount(foodId, amount, eatenOnDate) {
+export async function insertFoodEntryByAmount(foodId, amount, eatenOnTime) {
     // Fetch the food record to get the baseline serving size
     const { data: foodData, error: foodError } = await supabase
         .from('Foods')
@@ -67,20 +67,20 @@ export async function insertFoodEntryByAmount(foodId, amount, eatenOnDate) {
     const servings = amount / servingSize;
 
     // Insert the food entry with calculated servings
-    return insertFoodEntry(foodId, servings, eatenOnDate);
+    return insertFoodEntry(foodId, servings, eatenOnTime);
 }
 
 /**
  * Update an existing food entry record
  * @param {number} entryId - The ID of the food entry to update
- * @param {Object} updates - Object containing fields to update (foodId, servings, eatenOnDate)
+ * @param {Object} updates - Object containing fields to update (foodId, servings, eatenOnTime)
  * @returns {Promise<{data: Object|null, error: Object|null}>} The updated record or error
  */
 export async function updateFoodEntry(entryId, updates) {
     const updateData = {};
     if (updates.foodId !== undefined) updateData.food_id = updates.foodId;
     if (updates.servings !== undefined) updateData.servings = updates.servings;
-    if (updates.eatenOnDate !== undefined) updateData.eaten_on_date = updates.eatenOnDate;
+    if (updates.eatenOnTime !== undefined) updateData.eaten_on_time = new Date(updates.eatenOnTime).toISOString();
 
     return supabase
         .from('food-entry')
@@ -101,18 +101,23 @@ export async function deleteFoodEntry(entryId) {
 }
 
 /**
- * Get all food entries for a specific date with basic food details
- * @param {string} date - The date in YYYY-MM-DD format
+ * Get all food entries for a specific day
+ * @param {number} timestamp - The timestamp in milliseconds
  * @returns {Promise<{data: Array|null, error: Object|null}>} Array of food entries with details or error
  */
-export async function getFoodEntriesByDate(date) {
+export async function getFoodEntriesByDate(timestamp) {
+    const startOfDay = new Date(timestamp);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(timestamp);
+    endOfDay.setHours(23, 59, 59, 999);
+
     return supabase
         .from('food-entry')
         .select(`
             id,
             food_id,
             servings,
-            eaten_on_date,
+            eaten_on_time,
             created_at,
             Foods(
                 id,
@@ -121,8 +126,9 @@ export async function getFoodEntriesByDate(date) {
                 serving_size
             )
         `)
-        .eq('eaten_on_date', date)
-        .order('created_at', { ascending: false });
+        .gte('eaten_on_time', startOfDay.toISOString())
+        .lt('eaten_on_time', endOfDay.toISOString())
+        .order('eaten_on_time', { ascending: false });
 }
 
 // ============================================================================
@@ -438,11 +444,16 @@ export async function resolveMacroId(macroIdentifier) {
 
 /**
  * Get total consumption of a specific macro for a given date
- * @param {string} date - The date in YYYY-MM-DD format
+ * @param {number} timestamp - The timestamp in milliseconds
  * @param {number} macroId - The ID of the macro (nutrient)
  * @returns {Promise<{data: Object|null, error: Object|null}>} Object with macro consumption data or error
  */
-export async function getMacroConsumptionForDate(date, macroId) {
+export async function getMacroConsumptionForDate(timestamp, macroId) {
+    const startOfDay = new Date(timestamp);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(timestamp);
+    endOfDay.setHours(23, 59, 59, 999);
+
     try {
         const { data: consumptionData, error } = await supabase
             .from('food-entry')
@@ -455,7 +466,8 @@ export async function getMacroConsumptionForDate(date, macroId) {
                     macro_id
                 )
             `)
-            .eq('eaten_on_date', date)
+            .gte('eaten_on_time', startOfDay.toISOString())
+            .lt('eaten_on_time', endOfDay.toISOString())
             .eq('food_macro.macro_id', macroId);
 
         if (error) {
@@ -476,7 +488,7 @@ export async function getMacroConsumptionForDate(date, macroId) {
 
         return {
             data: {
-                date,
+                timestamp,
                 macroId,
                 totalConsumption,
                 entries: consumptionData.length
@@ -490,10 +502,15 @@ export async function getMacroConsumptionForDate(date, macroId) {
 
 /**
  * Get total consumption of all macros for a given date
- * @param {string} date - The date in YYYY-MM-DD format
+ * @param {number} timestamp - The timestamp in milliseconds
  * @returns {Promise<{data: Object|null, error: Object|null}>} Object with all macro consumption data or error
  */
-export async function getAllMacroConsumptionForDate(date) {
+export async function getAllMacroConsumptionForDate(timestamp) {
+    const startOfDay = new Date(timestamp);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(timestamp);
+    endOfDay.setHours(23, 59, 59, 999);
+
     try {
         const { data: consumptionData, error } = await supabase
             .from('food-entry')
@@ -506,7 +523,8 @@ export async function getAllMacroConsumptionForDate(date) {
                     macro_id
                 )
             `)
-            .eq('eaten_on_date', date);
+            .gte('eaten_on_time', startOfDay.toISOString())
+            .lt('eaten_on_time', endOfDay.toISOString());
 
         if (error) {
             return { data: null, error };
@@ -528,7 +546,7 @@ export async function getAllMacroConsumptionForDate(date) {
 
         return {
             data: {
-                date,
+                timestamp,
                 macroConsumption,
                 totalEntries: consumptionData.length
             },

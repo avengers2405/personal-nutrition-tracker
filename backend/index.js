@@ -67,17 +67,17 @@ app.get('/test', async (req, res) => {
 /**
  * Create a new food entry with servings
  * POST /api/food-entries
- * Body: { foodId, servings, eatenOnDate }
+ * Body: { foodId, servings, eatenOnTime }
  */
 app.post('/api/food-entries', async (req, res) => {
-    const { foodId, servings, eatenOnDate } = req.body;
-    console.log('[API] POST /api/food-entries with body:', { foodId, servings, eatenOnDate });
+    const { foodId, servings, eatenOnTime } = req.body;
+    console.log('[API] POST /api/food-entries with body:', { foodId, servings, eatenOnTime });
 
-    if (!foodId || servings === undefined || !eatenOnDate) {
-        return res.status(400).json({ error: 'Missing required fields: foodId, servings, eatenOnDate' });
+    if (!foodId || servings === undefined || !eatenOnTime) {
+        return res.status(400).json({ error: 'Missing required fields: foodId, servings, eatenOnTime' });
     }
 
-    const { data, error } = await insertFoodEntry(foodId, servings, eatenOnDate);
+    const { data, error } = await insertFoodEntry(foodId, servings, eatenOnTime);
     if (error) {
         console.error('[API] POST /api/food-entries error:', error);
         return res.status(500).json({ error });
@@ -89,17 +89,17 @@ app.post('/api/food-entries', async (req, res) => {
 /**
  * Create a new food entry by amount (auto-calculates servings)
  * POST /api/food-entries/by-amount
- * Body: { foodId, amount, eatenOnDate }
+ * Body: { foodId, amount, eatenOnTime }
  */
 app.post('/api/food-entries/by-amount', async (req, res) => {
-    const { foodId, amount, eatenOnDate } = req.body;
-    console.log('[API] POST /api/food-entries/by-amount with body:', { foodId, amount, eatenOnDate });
+    const { foodId, amount, eatenOnTime } = req.body;
+    console.log('[API] POST /api/food-entries/by-amount with body:', { foodId, amount, eatenOnTime });
 
-    if (!foodId || amount === undefined || !eatenOnDate) {
-        return res.status(400).json({ error: 'Missing required fields: foodId, amount, eatenOnDate' });
+    if (!foodId || amount === undefined || !eatenOnTime) {
+        return res.status(400).json({ error: 'Missing required fields: foodId, amount, eatenOnTime' });
     }
 
-    const { data, error } = await insertFoodEntryByAmount(foodId, amount, eatenOnDate);
+    const { data, error } = await insertFoodEntryByAmount(foodId, amount, eatenOnTime);
     if (error) {
         console.error('[API] POST /api/food-entries/by-amount error:', error);
         return res.status(500).json({ error });
@@ -111,7 +111,7 @@ app.post('/api/food-entries/by-amount', async (req, res) => {
 /**
  * Update a food entry
  * PUT /api/food-entries/:entryId
- * Body: { foodId?, servings?, eatenOnDate? }
+ * Body: { foodId?, servings?, eatenOnTime? }
  */
 app.put('/api/food-entries/:entryId', async (req, res) => {
     const { entryId } = req.params;
@@ -153,11 +153,11 @@ app.delete('/api/food-entries/:entryId', async (req, res) => {
 });
 
 /**
- * Get all food entries for a specific date
+ * Get all food entries for a specific day
  * GET /api/food-entries?timestamp=<unix_timestamp_in_milliseconds>
  * Query Parameters:
  *   - timestamp (required): Unix timestamp in milliseconds
- * Returns: Array of food entries with full food and macro details for that date
+ * Returns: Array of food entries with full food and macro details for that day
  */
 app.get('/api/food-entries', async (req, res) => {
     const { timestamp } = req.query;
@@ -167,21 +167,12 @@ app.get('/api/food-entries', async (req, res) => {
         return res.status(400).json({ error: 'Missing required query parameter: timestamp' });
     }
 
-    // Convert unix timestamp (in milliseconds) to YYYY-MM-DD format
-    const date = new Date(parseInt(timestamp));
-    if (isNaN(date.getTime())) {
+    const t = parseInt(timestamp);
+    if (isNaN(t)) {
         return res.status(400).json({ error: 'Invalid timestamp format' });
     }
 
-    // Format as YYYY-MM-DD in local timezone
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-
-    console.log('[API] GET /api/food-entries converted timestamp to date:', { timestamp, dateString });
-
-    const { data, error } = await getFoodEntriesByDate(dateString);
+    const { data, error } = await getFoodEntriesByDate(t);
     if (error) {
         console.error('[API] GET /api/food-entries error:', error);
         return res.status(500).json({ error });
@@ -551,21 +542,20 @@ app.get('/api/units', async (req, res) => {
 
 /**
  * Get total consumption of a specific macro for a given date
- * GET /api/consumption/:date/:macroIdentifier
- * Params: date (YYYY-MM-DD), macroIdentifier (macro ID or macro name)
+ * GET /api/consumption/:timestamp/:macroIdentifier
+ * Params: timestamp (number), macroIdentifier (macro ID or macro name)
  * Returns: { date, macroId, macroName, totalConsumption, entries }
  */
-app.get('/api/consumption/:date/:macroIdentifier', async (req, res) => {
-    const { date, macroIdentifier } = req.params;
+app.get('/api/consumption/:timestamp/:macroIdentifier', async (req, res) => {
+    const { timestamp, macroIdentifier } = req.params;
 
-    if (!date || !macroIdentifier) {
-        return res.status(400).json({ error: 'Missing required parameters: date (YYYY-MM-DD), macroIdentifier (ID or name)' });
+    if (!timestamp || !macroIdentifier) {
+        return res.status(400).json({ error: 'Missing required parameters: timestamp, macroIdentifier (ID or name)' });
     }
 
-    // Validate date format
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(date)) {
-        return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    const t = parseInt(timestamp);
+    if (isNaN(t)) {
+        return res.status(400).json({ error: 'Invalid timestamp format.' });
     }
 
     // Resolve macro ID from identifier (ID or name)
@@ -574,7 +564,7 @@ app.get('/api/consumption/:date/:macroIdentifier', async (req, res) => {
         return res.status(404).json({ error: resolveError.message });
     }
 
-    const { data, error } = await getMacroConsumptionForDate(date, resolvedMacroId);
+    const { data, error } = await getMacroConsumptionForDate(t, resolvedMacroId);
     if (error) {
         return res.status(500).json({ error });
     }
@@ -582,25 +572,24 @@ app.get('/api/consumption/:date/:macroIdentifier', async (req, res) => {
 });
 
 /**
- * Get total consumption of all macros for a given date
- * GET /api/consumption/:date
- * Params: date (YYYY-MM-DD)
+ * Get total consumption of all macros for a given timestamp
+ * GET /api/consumption/:timestamp
+ * Params: timestamp (number)
  * Returns: { date, macroConsumption: { macroId: totalValue, ... }, totalEntries }
  */
-app.get('/api/consumption/:date', async (req, res) => {
-    const { date } = req.params;
+app.get('/api/consumption/:timestamp', async (req, res) => {
+    const { timestamp } = req.params;
 
-    if (!date) {
-        return res.status(400).json({ error: 'Missing required parameter: date (YYYY-MM-DD)' });
+    if (!timestamp) {
+        return res.status(400).json({ error: 'Missing required parameter: timestamp' });
     }
 
-    // Validate date format
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(date)) {
-        return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+    const t = parseInt(timestamp);
+    if (isNaN(t)) {
+        return res.status(400).json({ error: 'Invalid timestamp format.' });
     }
 
-    const { data, error } = await getAllMacroConsumptionForDate(date);
+    const { data, error } = await getAllMacroConsumptionForDate(t);
     if (error) {
         return res.status(500).json({ error });
     }
