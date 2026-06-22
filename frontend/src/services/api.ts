@@ -251,12 +251,12 @@ export async function fetchFoodMacrosByFoodId(foodId: number) {
 /**
  * Create a new food entry with servings
  */
-export async function createFoodEntry(foodId: number, servings: number, eatenOnDate: string) {
+export async function createFoodEntry(foodId: number, servings: number, eatenOnTime: number) {
     try {
         const response = await fetch(`${BACKEND_URL}/api/food-entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ foodId, servings, eatenOnDate })
+            body: JSON.stringify({ foodId, servings, eatenOnTime })
         });
         if (!response.ok) {
             throw new Error(`Failed to create food entry: ${response.statusText}`);
@@ -271,12 +271,12 @@ export async function createFoodEntry(foodId: number, servings: number, eatenOnD
 /**
  * Create a new food entry by amount (auto-calculates servings)
  */
-export async function createFoodEntryByAmount(foodId: number, amount: number, eatenOnDate: string) {
+export async function createFoodEntryByAmount(foodId: number, amount: number, eatenOnTime: number) {
     try {
         const response = await fetch(`${BACKEND_URL}/api/food-entries/by-amount`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ foodId, amount, eatenOnDate })
+            body: JSON.stringify({ foodId, amount, eatenOnTime })
         });
         if (!response.ok) {
             throw new Error(`Failed to create food entry: ${response.statusText}`);
@@ -319,15 +319,15 @@ export async function fetchFoodEntriesByDate(timestamp: number = Date.now()) {
 /**
  * Get total consumption of a specific macro for a given date
  */
-export async function fetchMacroConsumption(date: string, macroIdentifier: string | number) {
+export async function fetchMacroConsumption(timestamp: number, macroIdentifier: string | number) {
     try {
-        const response = await fetch(`${BACKEND_URL}/api/consumption/${date}/${macroIdentifier}`);
+        const response = await fetch(`${BACKEND_URL}/api/consumption/${timestamp}/${macroIdentifier}`);
         if (!response.ok) {
             throw new Error(`Failed to fetch consumption data: ${response.statusText}`);
         }
         return await response.json();
     } catch (error) {
-        console.error(`Error fetching consumption for ${macroIdentifier} on ${date}:`, error);
+        console.error(`Error fetching consumption for ${macroIdentifier} on ${timestamp}:`, error);
         throw error;
     }
 }
@@ -335,15 +335,15 @@ export async function fetchMacroConsumption(date: string, macroIdentifier: strin
 /**
  * Get total consumption of all macros for a given date
  */
-export async function fetchAllMacroConsumption(date: string) {
+export async function fetchAllMacroConsumption(timestamp: number) {
     try {
-        const response = await fetch(`${BACKEND_URL}/api/consumption/${date}`);
+        const response = await fetch(`${BACKEND_URL}/api/consumption/${timestamp}`);
         if (!response.ok) {
             throw new Error(`Failed to fetch consumption data: ${response.statusText}`);
         }
         return await response.json();
     } catch (error) {
-        console.error(`Error fetching all consumption for ${date}:`, error);
+        console.error(`Error fetching all consumption for ${timestamp}:`, error);
         throw error;
     }
 }

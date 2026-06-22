@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, Search, Plus, ChevronDown, X, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, Search, Plus, ChevronDown, X, Check, List, BarChart2 } from 'lucide-react';
 import { FoodItem, DailyStats, UserConfig, TrackedNutrient, ConsumedFood } from './types';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
@@ -9,6 +9,8 @@ import AddFoodModal from './components/AddFoodModal';
 import FoodProfileModal from './components/FoodProfileModal';
 import FoodSourcePane from './components/FoodSourcePane';
 import ConnectionError from './components/ConnectionError';
+import DayEntriesModal from './components/DayEntriesModal';
+import AnalysisModal from './components/AnalysisModal';
 import { fetchAllMacros, fetchAllFoods, checkBackendHealth, fetchMeasurementUnits, createFood, createFoodEntry, createFoodEntryByAmount, fetchFoodEntriesByDate } from './services/api';
 
 const DEFAULT_CONFIG: UserConfig = {
@@ -35,8 +37,8 @@ const getYesterdayDate = () => {
 };
 
 const toDateTimestamp = (dateStr: string) => {
-  // Use midday to reduce timezone boundary shifts when backend converts timestamp to date.
-  return new Date(`${dateStr}T12:00:00`).getTime();
+  // Use 12:00am
+  return new Date(`${dateStr}T00:00:00`).getTime();
 };
 
 /**
@@ -88,11 +90,13 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFoodProfileModalOpen, setIsFoodProfileModalOpen] = useState(false);
   const [isAddFoodModalOpen, setIsAddFoodModalOpen] = useState(false);
+  const [isDayEntriesModalOpen, setIsDayEntriesModalOpen] = useState(false);
+  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedMacroId, setSelectedMacroId] = useState<string | null>(null);
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
-  const [selectedFoodsForEntry, setSelectedFoodsForEntry] = useState<{ foodId: string; foodName: string; amount: string; units: string; eatenOnDate: string }[]>([]);
+  const [selectedFoodsForEntry, setSelectedFoodsForEntry] = useState<{ foodId: string; foodName: string; amount: string; units: string; eatenOnDate: string; eatenOnTime: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -446,12 +450,14 @@ export default function App() {
     [];
 
   const handleSelectFoodForEntry = (food: FoodItem) => {
+    const defaultTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
     const newFood = {
       foodId: food.id,
       foodName: food.name,
       amount: '1',
       units: food.measurement_unit,
       eatenOnDate: currentDate,
+      eatenOnTime: defaultTime
     };
     setSelectedFoodsForEntry([...selectedFoodsForEntry, newFood]);
     setFoodSearchQuery('');
@@ -481,13 +487,17 @@ export default function App() {
 
       // Persist to backend
       try {
+        const dateStr = food.eatenOnDate || new Date().toISOString().split('T')[0];
+        const timeStr = food.eatenOnTime || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        const timestamp = new Date(`${dateStr}T${timeStr}:00`).getTime();
+
         if (food.units.toLowerCase() === 'servings') {
           // amount represents servings
-          const p = createFoodEntry(parseInt(food.foodId, 10), amount, food.eatenOnDate);
+          const p = createFoodEntry(parseInt(food.foodId, 10), amount, timestamp);
           promises.push(p);
         } else {
           // amount represents measurement unit; backend will calculate servings
-          const p = createFoodEntryByAmount(parseInt(food.foodId, 10), amount, food.eatenOnDate);
+          const p = createFoodEntryByAmount(parseInt(food.foodId, 10), amount, timestamp);
           promises.push(p);
         }
       } catch (err) {
@@ -551,75 +561,94 @@ export default function App() {
         {!isLoading && (
           <>
         
-        {/* Responsive Header */}
-        <header className="fixed top-0 left-0 lg:left-60 right-0 z-30 px-8 py-6 glass-header flex justify-between items-center transition-all duration-300">
-          <div className="flex items-center gap-2 lg:hidden">
-            <h2 className="font-headline text-2xl tracking-[4px] uppercase text-primary">Aureus</h2>
-          </div>
-          
-          <div className="relative">
-            <button 
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-3 bg-surface-container border border-outline px-6 py-3 hover:bg-surface-container-high transition-all"
-            >
-              <span className="font-headline text-sm uppercase tracking-[2px] text-primary">
-                {currentDateLabel}
-              </span>
-              <ChevronDown size={16} className={`text-primary transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-surface-container border border-outline shadow-2xl z-50">
+<header className="fixed top-0 left-0 lg:left-60 right-0 z-30 px-8 py-6 glass-header flex justify-between items-center transition-all duration-300">
+            <div className="flex items-center gap-2 lg:hidden">
+              <h2 className="font-headline text-2xl tracking-[4px] uppercase text-primary">Aureus</h2>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="relative">
                 <button 
-                  onClick={() => {
-                    setCurrentDate(todayDate);
-                    setIsDropdownOpen(false);
-                    setShowCalendar(false);
-                  }}
-                  className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="flex items-center gap-3 bg-surface-container border border-outline px-6 py-3 hover:bg-surface-container-high transition-all"
                 >
-                  Today
+                  <span className="font-headline text-sm uppercase tracking-[2px] text-primary">
+                    {currentDateLabel}
+                  </span>
+                  <ChevronDown size={16} className={`text-primary transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-                <button 
-                  onClick={() => {
-                    setCurrentDate(yesterdayDate);
-                    setIsDropdownOpen(false);
-                    setShowCalendar(false);
-                  }}
-                  className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
-                >
-                  Yesterday
-                </button>
-                <button 
-                  onClick={() => setShowCalendar(!showCalendar)}
-                  className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] flex justify-between items-center"
-                >
-                  Calendar
-                  <CalendarIcon size={14} className="text-primary opacity-60" />
-                </button>
-                
-                {showCalendar && (
-                  <div className="p-4 bg-surface border-t border-outline">
-                    <input
-                      type="date"
-                      max={todayDate}
-                      value={currentDate}
-                      onChange={(e) => {
-                        setCurrentDate(e.target.value);
+    
+                {isDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-64 bg-surface-container border border-outline shadow-2xl z-50">
+                    <button 
+                      onClick={() => {
+                        setCurrentDate(todayDate);
                         setIsDropdownOpen(false);
                         setShowCalendar(false);
                       }}
-                      className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                    />
+                      className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
+                    >
+                      Today
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setCurrentDate(yesterdayDate);
+                        setIsDropdownOpen(false);
+                        setShowCalendar(false);
+                      }}
+                      className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] border-b border-outline"
+                    >
+                      Yesterday
+                    </button>
+                    <button 
+                      onClick={() => setShowCalendar(!showCalendar)}
+                      className="w-full text-left px-6 py-4 hover:bg-primary/5 text-on-surface font-body text-xs uppercase tracking-[1px] flex justify-between items-center"
+                    >
+                      Calendar
+                      <CalendarIcon size={14} className="text-primary opacity-60" />
+                    </button>
+                    
+                    {showCalendar && (
+                      <div className="p-4 bg-surface border-t border-outline">
+                        <input
+                          type="date"
+                          max={todayDate}
+                          value={currentDate}
+                          onChange={(e) => {
+                            setCurrentDate(e.target.value);
+                            setIsDropdownOpen(false);
+                            setShowCalendar(false);
+                          }}
+                          className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-          
-          <div className="hidden lg:block text-right">
-            <h1 className="text-3xl font-normal text-on-surface font-headline">Aureus Registry</h1>
-            <p className="text-[11px] text-on-surface-variant uppercase tracking-[1px] mt-1 opacity-70">Sophisticated Metric Control</p>
+              
+              <button
+                onClick={() => setIsAnalysisModalOpen(true)}
+                className="flex items-center gap-2 bg-surface border border-outline px-4 py-3 hover:bg-surface-container-high transition-all lg:hidden"
+              >
+                <BarChart2 size={16} className="text-primary" />
+              </button>
+            </div>
+            
+            <div className="hidden lg:flex items-center gap-6">
+              <button
+                onClick={() => setIsAnalysisModalOpen(true)}
+                className="flex items-center gap-3 bg-surface border border-outline px-6 py-3 hover:bg-surface-container-high transition-all"
+              >
+                <BarChart2 size={16} className="text-primary" />
+                <span className="font-headline text-sm uppercase tracking-[2px] text-primary">
+                  Analysis
+                </span>
+              </button>
+              <div className="text-right">
+                <h1 className="text-3xl font-normal text-on-surface font-headline">Aureus Registry</h1>
+                <p className="text-[11px] text-on-surface-variant uppercase tracking-[1px] mt-1 opacity-70">Sophisticated Metric Control</p>
+              </div>
           </div>
         </header>
 
@@ -727,16 +756,28 @@ export default function App() {
                                   )}
                                 </select>
                               </div>
-                              <input
-                                type="date"
-                                value={food.eatenOnDate}
-                                onChange={(e) => {
-                                  const updated = [...selectedFoodsForEntry];
-                                  updated[index].eatenOnDate = e.target.value;
-                                  setSelectedFoodsForEntry(updated);
-                                }}
-                                className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
-                              />
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={food.eatenOnDate}
+                                  onChange={(e) => {
+                                    const updated = [...selectedFoodsForEntry];
+                                    updated[index].eatenOnDate = e.target.value;
+                                    setSelectedFoodsForEntry(updated);
+                                  }}
+                                  className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                />
+                                <input
+                                  type="time"
+                                  value={food.eatenOnTime}
+                                  onChange={(e) => {
+                                    const updated = [...selectedFoodsForEntry];
+                                    updated[index].eatenOnTime = e.target.value;
+                                    setSelectedFoodsForEntry(updated);
+                                  }}
+                                  className="w-full bg-surface-container-low text-on-surface font-body text-xs rounded-none py-2 px-2 border border-outline focus:border-primary focus:ring-0 transition-all"
+                                />
+                              </div>
                             </div>
                           );
                         })}
@@ -751,6 +792,13 @@ export default function App() {
                       >
                         <Plus size={16} />
                         Create Food
+                      </button>
+                      <button
+                        onClick={() => setIsDayEntriesModalOpen(true)}
+                        className="shrink-0 bg-surface border border-outline text-on-surface px-6 py-3 font-headline text-xs uppercase tracking-[2px] transition-all hover:bg-surface-container-high active:scale-[0.98] flex items-center gap-2 rounded-none"
+                      >
+                        <List size={16} />
+                        View Day Entries
                       </button>
                       {selectedFoodsForEntry.length > 0 && (
                         <button
@@ -806,6 +854,22 @@ export default function App() {
         }}
         trackedNutrients={config.trackedNutrients}
         measurementUnits={measurementUnits}
+      />
+
+      <DayEntriesModal
+        isOpen={isDayEntriesModalOpen}
+        onClose={() => setIsDayEntriesModalOpen(false)}
+        date={currentDate}
+        foodDatabase={foodDatabase}
+        trackedNutrients={config.trackedNutrients.map(n => ({ ...n, value: 0 }))}
+      />
+
+      <AnalysisModal
+        isOpen={isAnalysisModalOpen}
+        onClose={() => setIsAnalysisModalOpen(false)}
+        date={currentDate}
+        trackedNutrients={config.trackedNutrients.map(n => ({ ...n, value: 0 }))}
+        foodDatabase={foodDatabase}
       />
 
       {selectedMacroId && (

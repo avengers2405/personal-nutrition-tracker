@@ -4,6 +4,7 @@ import { Plus, Trash2, Edit2, Save, X, Eye, EyeOff } from 'lucide-react';
 import { fetchMeasurementUnits, createMacro, updateMacro, deleteMacro, createFood, updateFood, deleteFood } from '../services/api';
 import FoodProfileModal from './FoodProfileModal';
 import AddNutrientModal from './AddNutrientModal';
+import FoodInfoModal from './FoodInfoModal';
 
 interface SettingsProps {
   config: UserConfig;
@@ -17,6 +18,7 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
   const [editingFood, setEditingFood] = useState<string | null>(null);
   const [isFoodModalOpen, setIsFoodModalOpen] = useState(false);
   const [isNutrientModalOpen, setIsNutrientModalOpen] = useState(false);
+  const [infoFoodId, setInfoFoodId] = useState<string | null>(null);
   const [measurementUnits, setMeasurementUnits] = useState<string[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(true);
 
@@ -278,16 +280,20 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
 
         <div className="space-y-4">
           {foodDatabase.map(food => (
-            <div key={food.id} className="bg-surface-container-low border border-outline p-6 group">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex gap-4">
+            <div 
+              key={food.id} 
+              className="bg-surface-container-low border border-outline p-6 group cursor-pointer hover:bg-surface-container transition-colors"
+              onClick={() => setInfoFoodId(food.id)}
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex gap-4 pointer-events-none">
                   <img src={food.image} className="w-16 h-16 object-cover border border-outline opacity-70" alt={food.name} referrerPolicy="no-referrer" />
                   <div>
                     <h3 className="font-headline text-lg text-on-surface">{food.name}</h3>
                     <p className="text-[11px] text-on-surface-variant uppercase tracking-[1px] opacity-60">{`${food.serving_size || 1} ${food.measurement_unit}`}</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 relative z-10" onClick={(e) => e.stopPropagation()}>
                   <button 
                     onClick={() => {
                         setEditingFood(food.id);
@@ -340,6 +346,13 @@ export default function Settings({ config, setConfig, foodDatabase, setFoodDatab
             alert('Failed to save food to database.');
           }
         }}
+      />
+
+      <FoodInfoModal
+        isOpen={!!infoFoodId}
+        onClose={() => setInfoFoodId(null)}
+        food={infoFoodId ? foodDatabase.find(f => f.id === infoFoodId) || null : null}
+        trackedNutrients={config.trackedNutrients.map(n => ({ ...n, value: 0 }))}
       />
 
       <AddNutrientModal
